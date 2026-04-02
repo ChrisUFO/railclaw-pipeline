@@ -7,7 +7,7 @@ from railclaw_pipeline.runner.subprocess_runner import SubprocessError, run_subp
 
 
 # Characters unsafe in branch names — sanitize before use in file paths or commands
-UNSAFE_BRANCH_CHARS = re.compile(r"[^\w./-]")
+UNSAFE_BRANCH_CHARS = re.compile(r"[^\w/-]")
 
 
 def sanitize_branch_name(branch: str) -> str:

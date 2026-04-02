@@ -103,7 +103,10 @@ def run(issue: int | None, milestone: str | None, hotfix: bool, force_stage: str
 
         state = load_state(state_path)
     except Exception as exc:
-        state = load_state(state_path) or state
+        try:
+            state = load_state(state_path)
+        except FileNotFoundError:
+            pass
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
         save_state(state, state_path)
@@ -128,9 +131,9 @@ def run(issue: int | None, milestone: str | None, hotfix: bool, force_stage: str
 def status() -> None:
     """Show current pipeline status."""
     state_path = get_state_path()
-    state = load_state(state_path)
-    
-    if not state:
+    try:
+        state = load_state(state_path)
+    except FileNotFoundError:
         output_result({
             "ok": True,
             "action": "status",
@@ -156,9 +159,9 @@ def status() -> None:
 def resume(force_stage: str | None) -> None:
     """Resume a paused or interrupted pipeline."""
     state_path = get_state_path()
-    state = load_state(state_path)
-    
-    if not state:
+    try:
+        state = load_state(state_path)
+    except FileNotFoundError:
         output_result({
             "ok": False,
             "action": "resume",
@@ -189,9 +192,9 @@ def resume(force_stage: str | None) -> None:
 def abort() -> None:
     """Abort the current pipeline run."""
     state_path = get_state_path()
-    state = load_state(state_path)
-    
-    if not state:
+    try:
+        state = load_state(state_path)
+    except FileNotFoundError:
         output_result({
             "ok": False,
             "action": "abort",

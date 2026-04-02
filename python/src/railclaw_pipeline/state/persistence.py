@@ -43,10 +43,10 @@ def save_state(state: PipelineState, state_path: Path) -> None:
         raise
 
 
-def load_state(state_path: Path) -> PipelineState | None:
-    """Load state.json. Returns None if file doesn't exist or is invalid."""
+def load_state(state_path: Path) -> PipelineState:
+    """Load state.json. Raises FileNotFoundError if file doesn't exist."""
     if not state_path.exists():
-        return None
+        raise FileNotFoundError(f"State file not found: {state_path}")
     
     try:
         data = state_path.read_text()

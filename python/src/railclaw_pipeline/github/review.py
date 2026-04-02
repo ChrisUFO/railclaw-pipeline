@@ -18,6 +18,7 @@ class ReviewFinding:
     line: int | None = None
     severity: str = "info"
     category: str = "general"
+    title: str = ""
     description: str = ""
     raw_text: str = ""
 
@@ -27,6 +28,7 @@ class ReviewFinding:
             "line": self.line,
             "severity": self.severity,
             "category": self.category,
+            "title": self.title,
             "description": self.description,
             "raw_text": self.raw_text,
         }
@@ -52,17 +54,34 @@ class ReviewResult:
         }
 
 
-def parse_details_blocks(text: str) -> list[str]:
-    """Extract content from <details>...</details> blocks in review body."""
-    pattern = re.compile(r"<details[^>]*>(.*?)</details>", re.DOTALL)
-    blocks = []
-    for match in pattern.finditer(text):
-        # Remove summary tags, get content
-        content = re.sub(r"<summary[^>]*>.*?</summary>", "", match.group(1), flags=re.DOTALL)
-        content = content.strip()
-        if content:
-            blocks.append(content)
-    return blocks
+def parse_details_blocks(text: str) -> list[ReviewFinding]:
+    """Extract ReviewFindings from <details>...</details> blocks in review body.
+
+    Parses <summary>Severity: Title</summary> to populate severity and title.
+    Blocks without a <summary> tag are skipped.
+    """
+    details_pattern = re.compile(r"<details[^>]*>(.*?)</details>", re.DOTALL)
+    summary_pattern = re.compile(r"<summary[^>]*>(.*?)</summary>", re.DOTALL)
+    findings: list[ReviewFinding] = []
+    for match in details_pattern.finditer(text):
+        block_content = match.group(1)
+        summary_match = summary_pattern.search(block_content)
+        if not summary_match:
+            continue
+        summary_text = summary_match.group(1).strip()
+        if ": " in summary_text:
+            severity, title = summary_text.split(": ", 1)
+        else:
+            severity = summary_text
+            title = ""
+        body = summary_pattern.sub("", block_content).strip()
+        findings.append(ReviewFinding(
+            severity=severity,
+            title=title,
+            description=body,
+            raw_text=block_content.strip(),
+        ))
+    return findings
 
 
 def classify_finding(text: str) -> tuple[str, str]:
@@ -135,18 +154,11 @@ def extract_findings_from_reviews(reviews: list[dict[str, Any]]) -> list[ReviewF
         # Only process substantive reviews
         if state in ("COMMENTED", "CHANGES_REQUESTED", "APPROVED"):
             # Extract details blocks
-            blocks = parse_details_blocks(body)
-            for block in blocks:
-                severity, category = classify_finding(block)
-                findings.append(ReviewFinding(
-                    severity=severity,
-                    category=category,
-                    description=block[:500],
-                    raw_text=block,
-                ))
+            details_findings = parse_details_blocks(body)
+            findings.extend(details_findings)
 
             # Also check for findings in non-details body
-            if not blocks and state in ("CHANGES_REQUESTED", "COMMENTED"):
+            if not details_findings and state in ("CHANGES_REQUESTED", "COMMENTED"):
                 severity, category = classify_finding(body)
                 findings.append(ReviewFinding(
                     severity=severity,

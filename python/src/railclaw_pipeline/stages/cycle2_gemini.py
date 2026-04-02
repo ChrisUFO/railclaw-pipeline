@@ -194,8 +194,8 @@ def _extract_gemini_findings(review_result: ReviewResult) -> list[dict[str, Any]
         for block in blocks:
             findings.append({
                 "category": "gemini",
-                "description": block[:500],
-                "raw_text": block,
+                "description": block.description[:500],
+                "raw_text": block.raw_text,
                 "source": "gemini_review",
                 "author": author,
             })
