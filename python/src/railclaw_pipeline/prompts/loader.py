@@ -4,7 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from jinja2 import BaseLoader, Environment, StrictUndefined, TemplateSyntaxError, select_autoescape
+from jinja2 import BaseLoader, StrictUndefined, TemplateSyntaxError, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 
 
 class SandboxedTemplateError(Exception):
@@ -74,22 +75,23 @@ class FactoryTemplateLoader(BaseLoader):
         return any(u.lower() in lower for u in unsafe)
 
 
-def create_template_env(factory_path: Path) -> Environment:
+def create_template_env(factory_path: Path) -> SandboxedEnvironment:
     """Create a sandboxed Jinja2 environment for factory templates.
+
+    Uses jinja2.sandbox.SandboxedEnvironment for proper SSTI protection
+    instead of blacklist-based pattern filtering.
 
     - StrictUndefined: variables must be defined
     - autoescape: disabled (we output text, not HTML)
     - No access to Python internals
     """
     loader = FactoryTemplateLoader(factory_path)
-    env = Environment(
+    env = SandboxedEnvironment(
         loader=loader,
         undefined=StrictUndefined,
         autoescape=select_autoescape(default=False),
         keep_trailing_newline=True,
     )
-    # Remove dangerous globals
-    env.globals.pop("range", None)  # we'll add back a safe version
     return env
 
 

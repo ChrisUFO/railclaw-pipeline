@@ -75,6 +75,9 @@ async def run_merge(
     except Exception as exc:
         raise RuntimeError(f"Failed to merge PR #{pr_number}: {exc}") from exc
 
+    await git_ops.checkout("main")
+    await git_ops.pull("origin", "main")
+
     if state.branch:
         try:
             await git_ops.delete_branch(state.branch, force=True)
@@ -85,9 +88,6 @@ async def run_merge(
             await git_ops.delete_remote_branch(state.branch)
         except Exception:
             logger.warning("Failed to delete remote branch %s", state.branch, exc_info=True)
-
-    await git_ops.checkout("main")
-    await git_ops.pull("origin", "main")
 
     state.timestamps.stage_entered = datetime.now(timezone.utc)
     if state.timestamps:

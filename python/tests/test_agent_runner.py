@@ -16,8 +16,8 @@ def test_agent_config_build_args():
         args_template=["run", "--dir", "{dir}", "{prompt}"],
         workdir=Path("/tmp"),
     )
-    args = config.build_args(Path("/work"), "hello world")
-    assert args == ["run", "--dir", "/work", "hello world"]
+    args = config.build_args(Path("/work"))
+    assert args == ["run", "--dir", "/work"]
 
 
 def test_agent_config_model_substitution():
@@ -26,10 +26,10 @@ def test_agent_config_model_substitution():
         model="gpt-5",
         args_template=["--model", "{model}", "{prompt}"],
     )
-    args = config.build_args(Path("/tmp"), "test prompt")
+    args = config.build_args(Path("/tmp"))
     assert args[0] == "--model"
     assert args[1] == "gpt-5"
-    assert args[2] == "test prompt"
+    assert len(args) == 2
 
 
 def test_parse_verdict_pass():

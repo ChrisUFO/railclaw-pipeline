@@ -26,16 +26,25 @@ class StateLock:
         self._lock_file = open(self.lock_path, "w")
         
         start_time = time.monotonic()
-        while True:
-            try:
-                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return
-            except (IOError, OSError):
-                if time.monotonic() - start_time >= self.timeout:
-                    raise StateLockError(
-                        f"Failed to acquire lock {self.lock_path} after {self.timeout}s"
-                    )
-                time.sleep(0.1)
+        try:
+            while True:
+                try:
+                    fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    return
+                except (IOError, OSError):
+                    if time.monotonic() - start_time >= self.timeout:
+                        raise StateLockError(
+                            f"Failed to acquire lock {self.lock_path} after {self.timeout}s"
+                        )
+                    time.sleep(0.1)
+        except BaseException:
+            if self._lock_file:
+                try:
+                    self._lock_file.close()
+                except (IOError, OSError):
+                    pass
+            self._lock_file = None
+            raise
     
     def release(self) -> None:
         """Release lock if held."""

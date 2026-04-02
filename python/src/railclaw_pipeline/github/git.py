@@ -67,14 +67,13 @@ class GitOperations:
     async def push(
         self, remote: str = "origin", branch: str | None = None, set_upstream: bool = False
     ) -> str:
-        """Push to remote."""
+        """Push to remote with explicit refspec."""
+        ref = branch or await self.current_branch()
         args = ["push"]
         if set_upstream:
-            args.extend(["-u", remote, branch or "HEAD"])
+            args.extend(["-u", remote, f"HEAD:refs/heads/{ref}"])
         else:
-            args.append(remote)
-            if branch:
-                args.append(branch)
+            args.extend([remote, f"HEAD:refs/heads/{ref}"])
         return await self._git(*args, timeout=self.timeout * 2)
 
     async def branch_exists(self, branch: str, remote: str = "origin") -> bool:

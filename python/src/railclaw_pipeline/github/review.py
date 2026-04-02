@@ -113,6 +113,8 @@ def extract_findings_from_comments(comments: list[dict[str, Any]]) -> list[Revie
             continue
         severity, category = classify_finding(body)
         findings.append(ReviewFinding(
+            file=comment.get("path"),
+            line=comment.get("line"),
             severity=severity,
             category=category,
             description=body[:500],

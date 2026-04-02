@@ -26,12 +26,16 @@ class AgentConfig:
     args_template: list[str] = field(default_factory=lambda: ["run", "--dir", "{dir}", "{prompt}"])
     workdir: Path | None = None
 
-    def build_args(self, workdir: Path, prompt: str) -> list[str]:
-        """Build command arguments with template substitution."""
+    def build_args(self, workdir: Path) -> list[str]:
+        """Build command arguments with template substitution.
+
+        Prompt is passed via stdin to avoid ARG_MAX limits.
+        """
         args = []
         for arg in self.args_template:
+            if arg == "{prompt}":
+                continue
             arg = arg.replace("{dir}", str(workdir))
-            arg = arg.replace("{prompt}", prompt)
             arg = arg.replace("{model}", self.model)
             args.append(arg)
         return args
@@ -93,7 +97,7 @@ class AgentRunner:
         """
         effective_timeout = timeout or self.agent.timeout
         workdir = self.agent.workdir or self.workdir
-        args = self.agent.build_args(workdir, prompt)
+        args = self.agent.build_args(workdir)
 
         command = [self.agent.command] + args
         started = datetime.now(timezone.utc)
@@ -104,6 +108,7 @@ class AgentRunner:
                 cwd=workdir,
                 env=self.extra_env,
                 timeout=effective_timeout,
+                input_text=prompt,
             )
             finished = datetime.now(timezone.utc)
             verdict = parse_verdict(result.stdout, result.stderr, result.returncode)

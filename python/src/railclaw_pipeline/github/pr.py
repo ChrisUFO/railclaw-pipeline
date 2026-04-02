@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -59,10 +60,10 @@ class PrClient:
             output = await self.gh._gh(*args, timeout=60)
             result: dict[str, Any] = {"url": output.strip()}
             if "/pull/" in output:
-                pr_num_str = output.strip().rstrip("/").split("/")[-1]
-                if not pr_num_str.isdigit():
+                match = re.search(r"/pull/(\d+)", output)
+                if not match:
                     raise PrError(f"Failed to extract PR number from URL: {output.strip()}")
-                result["pr_number"] = int(pr_num_str)
+                result["pr_number"] = int(match.group(1))
             return result
         except GhError as exc:
             raise PrError(f"Failed to create PR: {exc}") from exc
@@ -128,7 +129,7 @@ class PrClient:
             output = await self.gh._gh(
                 "pr", "view", str(number),
                 "--json", "comments",
-                "--jq", ".comments[] | {author: .author.login, body: .body, createdAt: .createdAt}",
+                "--jq", ".comments[] | {author: .author.login, body: .body, createdAt: .createdAt, path: .path, line: .line}",
                 timeout=30,
             )
             if not output.strip():

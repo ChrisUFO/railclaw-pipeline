@@ -30,9 +30,10 @@ def save_state(state: PipelineState, state_path: Path) -> None:
     )
     
     try:
-        os.write(fd, data.encode("utf-8"))
-        os.fsync(fd)
-        os.close(fd)
+        with os.fdopen(fd, "w") as tmp_file:
+            tmp_file.write(data)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
         os.replace(tmp_path, str(state_path))
     except BaseException:
         try:
