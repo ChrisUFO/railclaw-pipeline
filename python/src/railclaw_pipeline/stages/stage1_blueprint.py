@@ -8,6 +8,7 @@ from pathlib import Path
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
 from railclaw_pipeline.github.gh import GhClient
+from railclaw_pipeline.github.git import sanitize_branch_name
 from railclaw_pipeline.prompts.loader import render_template
 from railclaw_pipeline.runner.agent import AgentConfig, AgentRunner
 from railclaw_pipeline.state.models import PipelineState
@@ -33,7 +34,9 @@ async def run_blueprint(
     issue_title = issue_data.get("title", "")
     issue_body = issue_data.get("body", "")
 
-    branch_name = f"feat/issue-{state.issue_number}-{_slugify(issue_title)}"
+    branch_name = sanitize_branch_name(
+        f"feat/issue-{state.issue_number}-{_slugify(issue_title)}"
+    )
     state.branch = branch_name
     state.plan_path = str(config.repo_path / "PLAN.md")
 

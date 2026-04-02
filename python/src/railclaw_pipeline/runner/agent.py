@@ -125,6 +125,8 @@ class AgentRunner:
                 finished_at=finished,
             )
 
+        except (SystemExit, KeyboardInterrupt):
+            raise
         except Exception as exc:
             finished = datetime.now(timezone.utc)
             return AgentResult(
