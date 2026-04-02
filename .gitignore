@@ -1,0 +1,16 @@
+_refs/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.state/
+state.json
+events.jsonl
+.python-version
