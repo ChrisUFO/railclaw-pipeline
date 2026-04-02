@@ -3,7 +3,7 @@
 import pytest
 from click.testing import CliRunner
 
-from railclaw_pipeline.cli import cli
+from railclaw_pipeline.cli import main as cli
 
 
 def test_cli_help():

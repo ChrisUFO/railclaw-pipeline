@@ -1,5 +1,7 @@
 """PR operations using gh CLI."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
@@ -55,10 +57,12 @@ class PrClient:
 
         try:
             output = await self.gh._gh(*args, timeout=60)
-            # Parse "https://github.com/owner/repo/pull/123" → extract number
             result: dict[str, Any] = {"url": output.strip()}
             if "/pull/" in output:
-                result["pr_number"] = int(output.strip().rstrip("/").split("/")[-1])
+                pr_num_str = output.strip().rstrip("/").split("/")[-1]
+                if not pr_num_str.isdigit():
+                    raise PrError(f"Failed to extract PR number from URL: {output.strip()}")
+                result["pr_number"] = int(pr_num_str)
             return result
         except GhError as exc:
             raise PrError(f"Failed to create PR: {exc}") from exc

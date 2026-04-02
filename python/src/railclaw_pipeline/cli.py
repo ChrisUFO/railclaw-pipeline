@@ -1,5 +1,6 @@
 """CLI interface for pipeline orchestrator."""
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -83,15 +84,43 @@ def run(issue: int | None, milestone: str | None, hotfix: bool, force_stage: str
     )
     
     save_state(state, state_path)
-    
+
+    from railclaw_pipeline.config import PipelineConfig
+    from railclaw_pipeline.events.emitter import EventEmitter
+    from railclaw_pipeline.pipeline import run_pipeline
+
+    config = PipelineConfig({
+        "repoPath": os.environ.get("RAILCLAW_REPO_PATH", "."),
+        "factoryPath": os.environ.get("RAILCLAW_FACTORY_PATH", "factory"),
+    })
+    emitter = EventEmitter(config.events_path)
+
+    try:
+        if hotfix:
+            asyncio.run(run_pipeline(state, config, emitter, hotfix=True))
+        else:
+            asyncio.run(run_pipeline(state, config, emitter))
+
+        state = load_state(state_path)
+    except Exception as exc:
+        state = load_state(state_path) or state
+        state.status = PipelineStatus.FAILED
+        state.error = {"message": str(exc)}
+        save_state(state, state_path)
+    finally:
+        emitter.close()
+
     output_result({
-        "ok": True,
+        "ok": state.status == PipelineStatus.COMPLETED,
         "action": "run",
         "stage": state.stage.value,
         "status": state.status.value,
         "issueNumber": state.issue_number,
-        "message": "Pipeline started",
+        "prNumber": state.pr_number,
+        "branch": state.branch,
+        "message": f"Pipeline {state.status.value}" + (f": {state.error['message']}" if state.error else ""),
         "statePath": str(state_path),
+        "error": state.error.get("message") if state.error else None,
     })
 
 

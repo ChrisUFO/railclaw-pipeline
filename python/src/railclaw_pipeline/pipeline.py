@@ -62,6 +62,7 @@ STAGE_PHASE_MAP: dict[str, tuple[str, str]] = {
     "stage8c_merge": ("merge", "merged"),
     "stage9_deploy": ("merge", "merged"),
     "stage10_qa": ("qa", "in-progress"),
+    "stage11_hotfix": ("hotfix", "in-progress"),
     "stage12_lessons": ("merge", "closed"),
 }
 
@@ -135,6 +136,7 @@ async def run_pipeline(
     state: PipelineState,
     config: PipelineConfig,
     emitter: EventEmitter,
+    hotfix: bool = False,
 ) -> None:
     """Execute the full pipeline from current stage to completion."""
     from railclaw_pipeline.stages.stage0_preflight import run_preflight
@@ -151,6 +153,7 @@ async def run_pipeline(
     from railclaw_pipeline.stages.stage8c_merge import run_merge
     from railclaw_pipeline.stages.stage9_deploy import run_deploy
     from railclaw_pipeline.stages.stage10_qa import run_qa
+    from railclaw_pipeline.stages.stage11_hotfix import run_hotfix
     from railclaw_pipeline.stages.stage12_lessons import run_lessons
 
     blueprint_config = _get_agent_config(config, "blueprint")
@@ -158,6 +161,18 @@ async def run_pipeline(
     scope_config = _get_agent_config(config, "scope")
 
     try:
+        if hotfix:
+            wrench_runner = AgentRunner(_get_agent_config(config, "wrench"), config.repo_path)
+            scope_runner = AgentRunner(_get_agent_config(config, "scope"), config.repo_path)
+            state = await run_stage(
+                "stage11_hotfix", run_hotfix, state, config, emitter,
+                wrench_runner, scope_runner,
+            )
+            state.status = PipelineStatus.COMPLETED
+            save_state(state, config.state_path)
+            emitter.emit("pipeline_complete", issue=state.issue_number)
+            return
+
         state = await run_stage("stage0_preflight", run_preflight, state, config, emitter)
         state = await run_stage(
             "stage1_blueprint", run_blueprint, state, config, emitter,

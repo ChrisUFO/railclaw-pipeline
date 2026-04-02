@@ -52,7 +52,7 @@ async def run_wrench(
         "plan_path": str(plan_path),
     }
 
-    prompt = render_template(config.factory_path, "wrench-implement.j2", context)
+    prompt = render_template(config.factory_path, "wrench.j2", context)
     if not prompt:
         prompt = _build_wrench_prompt(state, plan_content, config)
 

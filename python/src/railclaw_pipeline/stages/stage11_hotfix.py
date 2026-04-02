@@ -121,7 +121,7 @@ async def run_hotfix(
         base="main",
         head=fix_branch,
     )
-    state.pr_number = pr_result.get("number")
+    state.pr_number = pr_result.get("pr_number")
 
     review_context = {
         "issue_number": state.issue_number,

@@ -4,7 +4,6 @@ All subprocess calls use shell=False with list arguments only.
 """
 
 import asyncio
-import shlex
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum

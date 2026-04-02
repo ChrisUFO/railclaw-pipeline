@@ -76,6 +76,7 @@ def _slugify(text: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", slug)
     slug = re.sub(r"[\s_]+", "-", slug)
     slug = slug.strip("-")
+    slug = slug[:200]
     return slug[:50]
 
 
