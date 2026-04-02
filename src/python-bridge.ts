@@ -1,5 +1,6 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn } from "child_process";
 import type { PluginConfig, PipelineRunParams } from "./config.js";
+import { pipelineStore } from "./store.js";
 
 export interface PythonBridgeResult {
   ok: boolean;
@@ -41,6 +42,7 @@ export function spawnPythonBridge(
         RAILCLAW_FACTORY_PATH: config.factoryPath,
         RAILCLAW_STATE_DIR: config.stateDir,
         RAILCLAW_EVENTS_DIR: config.eventsDir,
+        RAILCLAW_REPO_PATH: config.repoPath,
       },
     });
 
@@ -67,6 +69,22 @@ export function spawnPythonBridge(
 
       try {
         const result = JSON.parse(stdout.trim()) as PythonBridgeResult;
+
+        if (result.ok && result.issueNumber && result.stage) {
+          try {
+            pipelineStore.set(`run:${result.issueNumber}`, {
+              issueNumber: result.issueNumber,
+              stage: result.stage,
+              status: result.status ?? "running",
+              startedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              statePath: result.statePath ?? "",
+            });
+          } catch {
+            // Store is advisory — failures are non-critical
+          }
+        }
+
         resolve(result);
       } catch (error) {
         resolve({

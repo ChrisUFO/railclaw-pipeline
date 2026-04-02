@@ -1,6 +1,7 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { registerPipelineTool } from "./tool.js";
 import { normalizeConfig } from "./config.js";
+import { registerLifecycleHooks } from "./hooks.js";
 
 export default definePluginEntry({
   id: "railclaw-pipeline",
@@ -10,5 +11,6 @@ export default definePluginEntry({
   register(api) {
     const config = normalizeConfig(api.pluginConfig);
     registerPipelineTool(api, config);
+    registerLifecycleHooks(api);
   },
 });
