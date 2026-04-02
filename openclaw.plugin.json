@@ -1,0 +1,19 @@
+{
+  "id": "railclaw-pipeline",
+  "name": "RailClaw Pipeline Orchestrator",
+  "description": "Automated coding factory pipeline: planning → implementation → review → merge → deploy → QA",
+  "version": "0.1.0",
+  "author": "Chris Harrison",
+  "license": "MIT",
+  "repository": "https://github.com/ChrisUFO/railclaw-pipeline",
+  "main": "dist/index.js",
+  "extensions": ["./dist/index.js"],
+  "compat": {
+    "pluginApi": ">=2026.3.24-beta.2",
+    "minGatewayVersion": "2026.3.24-beta.2"
+  },
+  "build": {
+    "openclawVersion": "2026.3.24-beta.2",
+    "pluginSdkVersion": "2026.3.24-beta.2"
+  }
+}

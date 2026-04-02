@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# RailClaw Pipeline — pre-commit hook
+set -euo pipefail
+
+PASS=true
+
+echo "🔍 Running TypeScript type check..."
+if ! npx tsc --noEmit 2>&1; then
+  echo "❌ TypeScript type check failed"
+  PASS=false
+fi
+
+echo "🔍 Running Prettier check..."
+if ! npx prettier --check 'src/**/*.ts' 2>&1; then
+  echo "❌ Prettier check failed — run 'npx prettier --write src/**/*.ts'"
+  PASS=false
+fi
+
+echo "🔍 Running ESLint..."
+if ! npx eslint 'src/**/*.ts' 2>&1; then
+  echo "❌ ESLint failed"
+  PASS=false
+fi
+
+echo "🐍 Running Python tests..."
+if ! (cd python && python -m pytest tests/ 2>&1); then
+  echo "❌ Python tests failed"
+  PASS=false
+fi
+
+echo "🐍 Running ruff check..."
+if ! (cd python && ruff check src/ 2>&1); then
+  echo "❌ Ruff linting failed"
+  PASS=false
+fi
+
+if [ "$PASS" = false ]; then
+  echo ""
+  echo "⛔ Pre-commit checks failed. Fix the above errors and try again."
+  exit 1
+fi
+
+echo "✅ All pre-commit checks passed."

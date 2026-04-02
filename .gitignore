@@ -1,16 +1,59 @@
-_refs/
+# ── Dependencies ──────────────────────────────────────────────
 node_modules/
+python/.venv/
+python/venv/
+
+# ── Build output ──────────────────────────────────────────────
+dist/
+build/
+*.tsbuildinfo
+*.egg-info/
+
+# ── Python ────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-dist/
-build/
-*.egg-info/
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+*.so
+
+# ── Node ──────────────────────────────────────────────────────
+.npm
+.eslintcache
+*.tsbuildinfo
+
+# ── IDEs & editors ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ── OS generated ──────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+
+# ── Plugin runtime state ──────────────────────────────────────
 .state/
 state.json
 events.jsonl
+logs/
+
+# ── Misc ──────────────────────────────────────────────────────
+*.tmp
+*.bak
+*.log
+.env
+.env.local
 .python-version
+
+# ── Reference copies (not part of repo) ───────────────────────
+_refs/
