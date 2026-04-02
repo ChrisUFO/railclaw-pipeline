@@ -3,7 +3,7 @@
 import fcntl
 import time
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 
 class StateLockError(Exception):
