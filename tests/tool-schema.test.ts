@@ -1,4 +1,4 @@
-import { jest, describe, it, expect } from "@jest/globals";
+import { vi, describe, it, expect } from 'vitest';
 
 const VALID_PARAMS = {
   action: "run" as const,
@@ -10,7 +10,7 @@ const VALID_STATUS_PARAMS = {
 };
 
 const mockApi = {
-  registerTool: jest.fn(),
+  registerTool: vi.fn(),
 };
 
 const mockConfig = {
@@ -31,11 +31,11 @@ const mockConfig = {
   escalation: { wrenchSrAfterRound: 3, chrisAfterRound: 5 },
 };
 
-jest.mock("child_process", () => ({
-  spawn: jest.fn(() => ({
-    stdout: { on: jest.fn() },
-    stderr: { on: jest.fn() },
-    on: jest.fn((event: string, cb: (code: number) => void) => {
+vi.mock("child_process", () => ({
+  spawn: vi.fn(() => ({
+    stdout: { on: vi.fn() },
+    stderr: { on: vi.fn() },
+    on: vi.fn((event: string, cb: (code: number) => void) => {
       if (event === "close") {
         cb(0);
       }

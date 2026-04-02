@@ -1,6 +1,7 @@
-import { jest, describe, it, expect } from "@jest/globals";
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import * as childProcess from "child_process";
 
-jest.mock("openclaw/plugin-sdk/runtime-store", () => ({
+vi.mock("openclaw/plugin-sdk/runtime-store", () => ({
   createPluginRuntimeStore: () => {
     const store = new Map<string, any>();
     return {
@@ -12,12 +13,24 @@ jest.mock("openclaw/plugin-sdk/runtime-store", () => ({
   },
 }));
 
+vi.mock("child_process", () => ({
+  spawn: vi.fn(() => ({
+    stdout: { on: () => {} },
+    stderr: { on: () => {} },
+    on: () => {},
+  })),
+}));
+
 describe("python-bridge", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("spawnPythonBridge returns error for non-zero exit", async () => {
     const { spawn } = await import("child_process");
     const { spawnPythonBridge } = await import("../src/python-bridge.js");
 
-    (spawn as jest.Mock).mockImplementation(() => ({
+    (spawn as any).mockImplementation(() => ({
       stdout: { on: (_evt: string, cb: (d: Buffer) => void) => { cb(Buffer.from("")); } },
       stderr: { on: (_evt: string, cb: (d: Buffer) => void) => { cb(Buffer.from("error msg")); } },
       on: (event: string, cb: (code: number) => void) => {
@@ -46,9 +59,9 @@ describe("python-bridge", () => {
       statePath: "/tmp/state.json",
     });
 
-    (spawn as jest.Mock).mockImplementation(() => ({
+    (spawn as any).mockImplementation(() => ({
       stdout: { on: (_evt: string, cb: (d: Buffer) => void) => { cb(Buffer.from(validJson)); } },
-      stderr: { on: (_evt: string, cb: (d: Buffer) => void) => {} },
+      stderr: { on: () => {} },
       on: (event: string, cb: (code: number) => void) => {
         if (event === "close") cb(0);
       },
@@ -67,7 +80,7 @@ describe("python-bridge", () => {
     const { spawn } = await import("child_process");
     const { spawnPythonBridge } = await import("../src/python-bridge.js");
 
-    (spawn as jest.Mock).mockImplementation(() => ({
+    (spawn as any).mockImplementation(() => ({
       stdout: { on: () => {} },
       stderr: { on: () => {} },
       on: (event: string, cb: (err: Error) => void) => {

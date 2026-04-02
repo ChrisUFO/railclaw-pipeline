@@ -1,20 +1,20 @@
-import { jest, describe, it, expect } from "@jest/globals";
+import { vi, describe, it, expect } from 'vitest';
 
-jest.mock("openclaw/plugin-sdk/plugin-entry", () => ({
+vi.mock("openclaw/plugin-sdk/plugin-entry", () => ({
   definePluginEntry: (entry: any) => entry,
 }));
 
-jest.mock("openclaw/plugin-sdk/runtime-store", () => ({
+vi.mock("openclaw/plugin-sdk/runtime-store", () => ({
   createPluginRuntimeStore: () => ({
-    get: jest.fn(),
-    set: jest.fn(),
-    keys: jest.fn(() => []),
-    clear: jest.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+    keys: vi.fn(() => []),
+    clear: vi.fn(),
   }),
 }));
 
-const mockRegisterTool = jest.fn();
-const mockOn = jest.fn();
+const mockRegisterTool = vi.fn();
+const mockOn = vi.fn();
 const mockApi = {
   pluginConfig: {
     repoPath: "/test/repo",
