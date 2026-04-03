@@ -41,7 +41,7 @@ class GhClient:
 
     async def issue_view(self, number: int) -> dict[str, Any]:
         """Get issue details as JSON."""
-        output = await self._gh("issue", "view", str(number), "--json", "title,body,labels,assignee,state")
+        output = await self._gh("issue", "view", str(number), "--json", "title,body,labels,assignees,state")
         import json
         return json.loads(output)
 
