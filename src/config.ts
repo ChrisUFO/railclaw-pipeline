@@ -33,10 +33,11 @@ export type PipelineRunParams = Static<typeof PipelineRunParameters>;
 
 const DEFAULT_CONFIG: PluginConfig = {
   repoPath: "/home/chris/.openclaw/agents/railrunner/workspace/repos/RailClaw",
-  factoryPath: "/home/chris/.openclaw/agents/railrunner/workspace/repos/RailClaw/factory",
-  pythonCommand: "railclaw-pipeline",
-  stateDir: ".pipeline-state",
-  eventsDir: ".pipeline-events",
+  factoryPath: "/home/chris/.openclaw/agents/railrunner/workspace/factory",
+  pythonCommand:
+    "/home/chris/.openclaw/agents/railrunner/workspace/repos/railclaw-pipeline/python/.venv/bin/railclaw-pipeline",
+  stateDir: "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-state",
+  eventsDir: "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-events",
   agents: {
     blueprint: { model: "openai/gpt-5.4", timeout: 600 },
     wrench: { model: "zai/glm-5-turbo", timeout: 1200 },
@@ -61,18 +62,31 @@ const DEFAULT_CONFIG: PluginConfig = {
 
 export function normalizeConfig(userConfig: Record<string, unknown>): PluginConfig {
   return {
-    repoPath: typeof userConfig.repoPath === "string" ? userConfig.repoPath : DEFAULT_CONFIG.repoPath,
-    factoryPath: typeof userConfig.factoryPath === "string" ? userConfig.factoryPath : DEFAULT_CONFIG.factoryPath,
-    pythonCommand: typeof userConfig.pythonCommand === "string" ? userConfig.pythonCommand : DEFAULT_CONFIG.pythonCommand,
-    stateDir: typeof userConfig.stateDir === "string" ? userConfig.stateDir : DEFAULT_CONFIG.stateDir,
-    eventsDir: typeof userConfig.eventsDir === "string" ? userConfig.eventsDir : DEFAULT_CONFIG.eventsDir,
+    repoPath:
+      typeof userConfig.repoPath === "string" ? userConfig.repoPath : DEFAULT_CONFIG.repoPath,
+    factoryPath:
+      typeof userConfig.factoryPath === "string"
+        ? userConfig.factoryPath
+        : DEFAULT_CONFIG.factoryPath,
+    pythonCommand:
+      typeof userConfig.pythonCommand === "string"
+        ? userConfig.pythonCommand
+        : DEFAULT_CONFIG.pythonCommand,
+    stateDir:
+      typeof userConfig.stateDir === "string" ? userConfig.stateDir : DEFAULT_CONFIG.stateDir,
+    eventsDir:
+      typeof userConfig.eventsDir === "string" ? userConfig.eventsDir : DEFAULT_CONFIG.eventsDir,
     agents: {
       ...DEFAULT_CONFIG.agents,
-      ...(typeof userConfig.agents === "object" && userConfig.agents !== null ? userConfig.agents : {}),
+      ...(typeof userConfig.agents === "object" && userConfig.agents !== null
+        ? userConfig.agents
+        : {}),
     } as PluginConfig["agents"],
     timing: {
       ...DEFAULT_CONFIG.timing,
-      ...(typeof userConfig.timing === "object" && userConfig.timing !== null ? userConfig.timing : {}),
+      ...(typeof userConfig.timing === "object" && userConfig.timing !== null
+        ? userConfig.timing
+        : {}),
     } as PluginConfig["timing"],
     pm2: {
       ...DEFAULT_CONFIG.pm2,
@@ -80,7 +94,9 @@ export function normalizeConfig(userConfig: Record<string, unknown>): PluginConf
     } as PluginConfig["pm2"],
     escalation: {
       ...DEFAULT_CONFIG.escalation,
-      ...(typeof userConfig.escalation === "object" && userConfig.escalation !== null ? userConfig.escalation : {}),
+      ...(typeof userConfig.escalation === "object" && userConfig.escalation !== null
+        ? userConfig.escalation
+        : {}),
     } as PluginConfig["escalation"],
   };
 }

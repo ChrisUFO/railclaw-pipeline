@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
 import { normalizeConfig } from "../src/config.js";
 
 describe("normalizeConfig", () => {
@@ -6,9 +6,15 @@ describe("normalizeConfig", () => {
     const config = normalizeConfig({});
     expect(config.repoPath).toBeDefined();
     expect(config.factoryPath).toBeDefined();
-    expect(config.pythonCommand).toBe("railclaw-pipeline");
-    expect(config.stateDir).toBe(".pipeline-state");
-    expect(config.eventsDir).toBe(".pipeline-events");
+    expect(config.pythonCommand).toBe(
+      "/home/chris/.openclaw/agents/railrunner/workspace/repos/railclaw-pipeline/python/.venv/bin/railclaw-pipeline",
+    );
+    expect(config.stateDir).toBe(
+      "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-state",
+    );
+    expect(config.eventsDir).toBe(
+      "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-events",
+    );
   });
 
   it("overrides provided string fields", () => {
