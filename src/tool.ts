@@ -1,9 +1,13 @@
 import { Type, Static } from "@sinclair/typebox";
 import { spawnPythonBridge } from "./python-bridge.js";
 import type { PluginConfig } from "./config.js";
+import { buildRuntimeConfig } from "./config.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 export const PipelineRunParameters = Type.Object({
+  repoPath: Type.String({
+    description: "Absolute path to the target git repo. Plugin resolves .pipeline.json from here.",
+  }),
   action: Type.Union([
     Type.Literal("run"),
     Type.Literal("status"),
@@ -41,7 +45,10 @@ export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfi
         };
       }
 
-      const result = await spawnPythonBridge(config, params);
+      // Build per-call config: merge .pipeline.json over plugin defaults
+      const runtimeConfig = buildRuntimeConfig(config, params.repoPath);
+
+      const result = await spawnPythonBridge(runtimeConfig, params);
 
       return {
         content: [

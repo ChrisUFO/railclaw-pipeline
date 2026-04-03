@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import type { Static } from "@sinclair/typebox";
 import type { PipelineRunParameters } from "./tool.js";
 
@@ -31,6 +33,15 @@ export interface PluginConfig {
 
 export type PipelineRunParams = Static<typeof PipelineRunParameters>;
 
+/** Shape of a `.pipeline.json` file found at a repo root. */
+export interface RepoPipelineConfig {
+  factoryPath?: string;
+  agents?: PluginConfig["agents"];
+  timing?: PluginConfig["timing"];
+  pm2?: PluginConfig["pm2"];
+  escalation?: PluginConfig["escalation"];
+}
+
 const DEFAULT_CONFIG: PluginConfig = {
   repoPath: "/home/chris/.openclaw/agents/railrunner/workspace/repos/RailClaw",
   factoryPath: "/home/chris/.openclaw/agents/railrunner/workspace/factory",
@@ -59,6 +70,69 @@ const DEFAULT_CONFIG: PluginConfig = {
     chrisAfterRound: 5,
   },
 };
+
+/**
+ * Walk up from `startDir` looking for a `.pipeline.json` file.
+ * Returns the parsed config or null if not found (stops at filesystem root).
+ */
+export function resolveRepoPipelineConfig(startDir: string): RepoPipelineConfig | null {
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+
+  while (dir !== root) {
+    const candidate = path.join(dir, ".pipeline.json");
+    try {
+      if (fs.existsSync(candidate)) {
+        const raw = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+        return raw as RepoPipelineConfig;
+      }
+    } catch {
+      // File exists but is malformed — skip and keep walking up
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  return null;
+}
+
+/**
+ * Merge per-repo `.pipeline.json` config over the plugin-level defaults.
+ * `repoPath` overrides the plugin-level repoPath.
+ */
+export function buildRuntimeConfig(
+  pluginConfig: PluginConfig,
+  repoPath: string,
+): PluginConfig {
+  const repoConfig = resolveRepoPipelineConfig(repoPath);
+
+  // If repoConfig specifies a factoryPath, resolve it relative to where the .pipeline.json was found
+  let factoryPath = pluginConfig.factoryPath;
+  if (repoConfig?.factoryPath) {
+    factoryPath = path.isAbsolute(repoConfig.factoryPath)
+      ? repoConfig.factoryPath
+      : path.join(repoPath, repoConfig.factoryPath);
+  }
+
+  return {
+    ...pluginConfig,
+    repoPath: path.resolve(repoPath),
+    factoryPath,
+    agents: repoConfig?.agents
+      ? { ...DEFAULT_CONFIG.agents, ...pluginConfig.agents, ...repoConfig.agents }
+      : pluginConfig.agents,
+    timing: repoConfig?.timing
+      ? { ...DEFAULT_CONFIG.timing, ...pluginConfig.timing, ...repoConfig.timing }
+      : pluginConfig.timing,
+    pm2: repoConfig?.pm2
+      ? { ...DEFAULT_CONFIG.pm2, ...pluginConfig.pm2, ...repoConfig.pm2 }
+      : pluginConfig.pm2,
+    escalation: repoConfig?.escalation
+      ? { ...DEFAULT_CONFIG.escalation, ...pluginConfig.escalation, ...repoConfig.escalation }
+      : pluginConfig.escalation,
+  };
+}
 
 export function normalizeConfig(userConfig: Record<string, unknown>): PluginConfig {
   return {

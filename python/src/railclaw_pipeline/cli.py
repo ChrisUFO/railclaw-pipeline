@@ -44,11 +44,20 @@ def main() -> None:
 
 
 @main.command()
+@click.option("--repo-path", type=str, help="Absolute path to the target repo")
+@click.option("--factory-path", type=str, help="Path to factory config directory")
 @click.option("--issue", type=int, help="Issue number to process")
 @click.option("--milestone", type=str, help="Milestone label for multi-issue mode")
 @click.option("--hotfix", is_flag=True, help="Run in hotfix mode")
 @click.option("--force-stage", type=str, help="Force start at specific stage")
-def run(issue: int | None, milestone: str | None, hotfix: bool, force_stage: str | None) -> None:
+def run(
+    repo_path: str | None,
+    factory_path: str | None,
+    issue: int | None,
+    milestone: str | None,
+    hotfix: bool,
+    force_stage: str | None,
+) -> None:
     """Start a new pipeline run."""
     if not issue and not milestone:
         output_result({
@@ -89,9 +98,13 @@ def run(issue: int | None, milestone: str | None, hotfix: bool, force_stage: str
     from railclaw_pipeline.events.emitter import EventEmitter
     from railclaw_pipeline.pipeline import run_pipeline
 
+    # CLI args override env vars, env vars override defaults
+    effective_repo = repo_path or os.environ.get("RAILCLAW_REPO_PATH", ".")
+    effective_factory = factory_path or os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+
     config = PipelineConfig({
-        "repoPath": os.environ.get("RAILCLAW_REPO_PATH", "."),
-        "factoryPath": os.environ.get("RAILCLAW_FACTORY_PATH", "factory"),
+        "repoPath": effective_repo,
+        "factoryPath": effective_factory,
     })
     emitter = EventEmitter(config.events_path)
 
