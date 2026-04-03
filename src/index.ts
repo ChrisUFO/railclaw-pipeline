@@ -7,9 +7,8 @@ export default definePluginEntry({
   id: "railclaw-pipeline",
   name: "RailClaw Pipeline Orchestrator",
   description: "Automated coding factory pipeline: planning → implementation → review → merge → deploy → QA",
-  version: "0.1.0",
   register(api) {
-    const config = normalizeConfig(api.pluginConfig);
+    const config = normalizeConfig(api.pluginConfig ?? {});
     registerPipelineTool(api, config);
     registerLifecycleHooks(api);
   },

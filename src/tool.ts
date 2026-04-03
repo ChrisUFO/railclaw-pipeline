@@ -1,8 +1,9 @@
 import { Type, Static } from "@sinclair/typebox";
 import { spawnPythonBridge } from "./python-bridge.js";
 import type { PluginConfig } from "./config.js";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
-const PipelineRunParameters = Type.Object({
+export const PipelineRunParameters = Type.Object({
   action: Type.Union([
     Type.Literal("run"),
     Type.Literal("status"),
@@ -18,19 +19,10 @@ const PipelineRunParameters = Type.Object({
 
 type PipelineRunParams = Static<typeof PipelineRunParameters>;
 
-export function registerPipelineTool(
-  api: {
-    registerTool: (tool: {
-      name: string;
-      description: string;
-      parameters: typeof PipelineRunParameters;
-      execute: (id: string, params: PipelineRunParams) => Promise<{ content: Array<{ type: string; text: string }> }>;
-    }) => void;
-  },
-  config: PluginConfig
-) {
+export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfig) {
   api.registerTool({
     name: "pipeline_run",
+    label: "Pipeline Run",
     description: "Run the coding factory pipeline for an issue or milestone",
     parameters: PipelineRunParameters,
     async execute(_id: string, params: PipelineRunParams) {
@@ -38,13 +30,14 @@ export function registerPipelineTool(
         return {
           content: [
             {
-              type: "text",
+              type: "text" as const,
               text: JSON.stringify({
                 ok: false,
                 error: "issueNumber or milestone is required for run action",
               }),
             },
           ],
+          details: {},
         };
       }
 
@@ -53,10 +46,11 @@ export function registerPipelineTool(
       return {
         content: [
           {
-            type: "text",
+            type: "text" as const,
             text: JSON.stringify(result),
           },
         ],
+        details: {},
       };
     },
   });

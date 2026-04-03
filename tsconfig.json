@@ -6,6 +6,10 @@
     "moduleResolution": "node",
     "rootDir": "./src",
     "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "openclaw/plugin-sdk/*": ["/home/chris/.npm-global/lib/node_modules/openclaw/dist/plugin-sdk/*"]
+    },
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

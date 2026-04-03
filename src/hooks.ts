@@ -1,29 +1,31 @@
 import { pipelineStore } from "./store.js";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
-export function registerLifecycleHooks(api: {
-  on: (event: string, handler: () => void | Promise<void>) => void;
-}): void {
-  api.on("startup", async () => {
+export function registerLifecycleHooks(api: OpenClawPluginApi): void {
+  api.on("gateway_start", async () => {
     try {
-      const keys = pipelineStore.keys();
-      for (const key of keys) {
-        const meta = pipelineStore.get(key);
-        if (meta && meta.status === "running") {
-          pipelineStore.set(key, {
-            ...meta,
-            status: "interrupted",
-            updatedAt: new Date().toISOString(),
-          });
+      const map = pipelineStore.tryGetRuntime();
+      if (map) {
+        for (const key of Object.keys(map)) {
+          const meta = map[key];
+          if (meta && meta.status === "running") {
+            map[key] = {
+              ...meta,
+              status: "interrupted",
+              updatedAt: new Date().toISOString(),
+            };
+          }
         }
+        pipelineStore.setRuntime(map);
       }
     } catch {
       // Store cleanup is advisory
     }
   });
 
-  api.on("shutdown", async () => {
+  api.on("gateway_stop", async () => {
     try {
-      pipelineStore.clear();
+      pipelineStore.clearRuntime();
     } catch {
       // Non-critical
     }

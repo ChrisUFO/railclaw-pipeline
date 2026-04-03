@@ -9,4 +9,6 @@ export interface PipelineRunMetadata {
   statePath: string;
 }
 
-export const pipelineStore = createPluginRuntimeStore<PipelineRunMetadata>("railclaw-pipeline");
+type PipelineRunMap = Record<string, PipelineRunMetadata>;
+
+export const pipelineStore = createPluginRuntimeStore<PipelineRunMap>("railclaw-pipeline");

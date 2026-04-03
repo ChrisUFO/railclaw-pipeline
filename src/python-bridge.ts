@@ -72,14 +72,16 @@ export function spawnPythonBridge(
 
         if (result.ok && result.issueNumber && result.stage) {
           try {
-            pipelineStore.set(`run:${result.issueNumber}`, {
+            const map = pipelineStore.tryGetRuntime() ?? {};
+            map[`run:${result.issueNumber}`] = {
               issueNumber: result.issueNumber,
               stage: result.stage,
               status: result.status ?? "running",
               startedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               statePath: result.statePath ?? "",
-            });
+            };
+            pipelineStore.setRuntime(map);
           } catch {
             // Store is advisory — failures are non-critical
           }
