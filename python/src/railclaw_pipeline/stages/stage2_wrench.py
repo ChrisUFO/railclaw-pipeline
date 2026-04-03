@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 async def run_wrench(
     state: PipelineState,
     config: PipelineConfig,
-    runner: AgentRunner,
     emitter: EventEmitter,
+    runner: AgentRunner,
 ) -> PipelineState:
     """Stage 2: Wrench implements the plan phase by phase.
 

@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 async def run_blueprint(
     state: PipelineState,
     config: PipelineConfig,
-    runner: AgentRunner,
     emitter: EventEmitter,
+    runner: AgentRunner,
 ) -> PipelineState:
     """Stage 1: Fetch issue, invoke Blueprint agent, write PLAN.md.
 
