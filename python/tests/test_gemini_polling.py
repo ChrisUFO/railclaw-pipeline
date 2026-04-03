@@ -104,6 +104,22 @@ def test_extract_gemini_findings_from_comments():
     assert "Inline comment finding" in findings[0]["description"]
 
 
+def test_get_agent_config_no_timeout(tmp_path):
+    """_get_agent_config should not include --timeout in args_template."""
+    from railclaw_pipeline.stages.cycle2_gemini import _get_agent_config
+
+    config = PipelineConfig({
+        "repoPath": str(tmp_path),
+        "factoryPath": str(tmp_path / "factory"),
+    })
+    wrench_config = _get_agent_config(config, "wrench")
+    assert "--timeout" not in wrench_config.args_template
+    assert "{prompt}" in wrench_config.args_template
+
+    blueprint_config = _get_agent_config(config, "blueprint")
+    assert "--timeout" not in blueprint_config.args_template
+
+
 async def test_run_gemini_loop_no_pr_raises(tmp_path):
     from railclaw_pipeline.state.models import PipelineState, PipelineStage
     from railclaw_pipeline.stages.cycle2_gemini import run_gemini_loop

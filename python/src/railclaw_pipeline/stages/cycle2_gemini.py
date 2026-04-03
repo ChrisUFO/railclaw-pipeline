@@ -364,13 +364,14 @@ def _parse_verdict(output: str) -> str:
 
 
 def _get_agent_config(config: PipelineConfig, agent_name: str) -> AgentConfig:
+    """Build AgentConfig for a named agent. NOTE: duplicates pipeline.py — keep in sync."""
     agent_cfg = config.agents.get(agent_name, {})
     model = agent_cfg.get("model", "")
     timeout = agent_cfg.get("timeout", 600)
 
     workdir = config.repo_path
     command = "opencode"
-    args_template = ["run", "--dir", str(workdir), "--timeout", str(timeout), "{prompt}"]
+    args_template = ["run", "--dir", str(workdir), "{prompt}"]
 
     if agent_name in ("wrenchSr", "scout"):
         command = "gemini"
@@ -379,7 +380,7 @@ def _get_agent_config(config: PipelineConfig, agent_name: str) -> AgentConfig:
         env_dir = config.factory_path / "envs" / agent_name
         if env_dir.exists():
             workdir = env_dir
-        args_template = ["run", "--dir", str(workdir), "--timeout", str(timeout), "{prompt}"]
+        args_template = ["run", "--dir", str(workdir), "{prompt}"]
 
     return AgentConfig(
         name=agent_name,

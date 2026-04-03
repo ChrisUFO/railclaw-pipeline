@@ -234,6 +234,10 @@ async def run_pipeline(
             save_state(state, config.state_path)
 
             cur_count = len(state.findings.get("current", []))
+            logger.info(
+                "cycle2_round %d: findings=%d, gemini_clean=%s, stall=%d",
+                state.cycle.cycle2_round, cur_count, state.cycle.gemini_clean, stall,
+            )
             if cur_count >= prev_count:
                 stall += 1
             else:
