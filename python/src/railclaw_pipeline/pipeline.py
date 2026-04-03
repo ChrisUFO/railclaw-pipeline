@@ -317,7 +317,7 @@ def _get_agent_config(config: PipelineConfig, agent_name: str) -> "AgentConfig":
         env_dir = config.factory_path / "envs" / agent_name
         if env_dir.exists():
             workdir = env_dir
-        args_template = ["run", "--dir", str(workdir), "--timeout", str(timeout), "{prompt}"]
+        args_template = ["run", "--dir", str(workdir), "{prompt}"]
 
     return AgentConfig(
         name=agent_name,
