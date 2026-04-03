@@ -55,8 +55,12 @@ class FactoryTemplateLoader(BaseLoader):
         raise TemplateSyntaxError(f"Template not found: {template}", 0)
 
     def _has_unsafe_patterns(self, source: str) -> bool:
-        """Check for obviously unsafe Jinja2 patterns."""
-        # These would require explicit sandbox bypass
+        """Check for obviously unsafe Jinja2 patterns.
+
+        Only inspects content inside {{ }} and {% %} delimiters.
+        Plain text containing words like "subprocess" is safe —
+        it only becomes dangerous when used as a Jinja2 expression.
+        """
         unsafe = [
             "__import__",
             "__class__",
@@ -71,8 +75,13 @@ class FactoryTemplateLoader(BaseLoader):
             "getattr(",
             "setattr(",
         ]
-        lower = source.lower()
-        return any(u.lower() in lower for u in unsafe)
+        # Extract Jinja expressions and statements only
+        jinja_blocks = re.findall(r"\{\{.*?\}\}|\{%.*?%\}", source, re.DOTALL)
+        for block in jinja_blocks:
+            lower = block.lower()
+            if any(u.lower() in lower for u in unsafe):
+                return True
+        return False
 
 
 def create_template_env(factory_path: Path) -> SandboxedEnvironment:
