@@ -1,8 +1,11 @@
-# railclaw-pipeline
+# RailClaw Pipeline
+
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![OpenClaw Plugin](https://img.shields.io/badge/openclaw-plugin-purple.svg)](https://openclaw.ai)
 
 OpenClaw plugin for automated coding factory pipeline orchestration. Plans, implements, reviews, merges, deploys, and QA-tests code changes from GitHub issues.
 
-## Installation
+## Install
 
 ```bash
 openclaw plugins install chrisufo/railclaw-pipeline
@@ -10,7 +13,7 @@ openclaw plugins install chrisufo/railclaw-pipeline
 
 The postinstall script runs `pip install -e ./python` automatically.
 
-## Configuration
+## Quick Start
 
 Add to your `openclaw.json`:
 
@@ -22,18 +25,7 @@ Add to your `openclaw.json`:
         "enabled": true,
         "config": {
           "repoPath": "/path/to/target/repo",
-          "factoryPath": "/path/to/factory",
-          "agents": {
-            "blueprint": { "model": "openai/gpt-5.4", "timeout": 600 },
-            "wrench": { "model": "zai/glm-5-turbo", "timeout": 1200 },
-            "scope": { "model": "minimax/MiniMax-M2.7", "timeout": 600 },
-            "beaker": { "model": "openai/gpt-5.4-mini", "timeout": 600 },
-            "wrenchSr": { "model": "gemini/gemini-3.1-pro-preview", "timeout": 1200 }
-          },
-          "escalation": {
-            "wrenchSrAfterRound": 3,
-            "chrisAfterRound": 5
-          }
+          "factoryPath": "/path/to/factory"
         }
       }
     }
@@ -41,95 +33,124 @@ Add to your `openclaw.json`:
 }
 ```
 
-### Config Options
+RailRunner (or any OpenClaw agent) can then invoke:
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `repoPath` | `.` | Target repository path |
-| `factoryPath` | `factory` | Factory directory with prompts and state |
-| `pythonCommand` | `railclaw-pipeline` | Python CLI command |
-| `stateDir` | `.pipeline-state` | State file directory |
-| `eventsDir` | `.pipeline-events` | Event log directory |
-| `agents.*` | — | Per-agent model and timeout |
-| `timing.geminiPollInterval` | `60` | Seconds between Gemini review polls |
-| `timing.approvalTimeout` | `86400` | Max seconds to wait for human approval |
-| `pm2.processName` | `railclaw-mc` | PM2 process name for deploy |
-| `escalation.wrenchSrAfterRound` | `3` | Switch to Wrench Sr after N fix rounds |
-| `escalation.chrisAfterRound` | `5` | Escalate to Chris after N fix rounds |
+```
+pipeline_run(action: "run", issueNumber: 42)
+```
 
-## Usage
+The pipeline runs as a **detached background process** — RailRunner stays responsive during long runs and receives stage handoff notifications as the pipeline progresses.
 
-The plugin registers a `pipeline_run` tool with these actions:
+## Tool Actions
 
-- **`run`** — Start a new pipeline for an issue or milestone
-- **`status`** — Check current pipeline state
-- **`resume`** — Resume an interrupted pipeline
-- **`abort`** — Cancel the active pipeline
+| Action          | Description                                                          |
+| --------------- | -------------------------------------------------------------------- |
+| `run`           | Start a new pipeline for an issue or milestone (detached by default) |
+| `status`        | Check current pipeline state                                         |
+| `resume`        | Resume an interrupted pipeline                                       |
+| `abort`         | Cancel the active pipeline (kills background process)                |
+| `notifications` | Get pending stage handoff notifications                              |
+
+### Parameters
+
+| Param         | Type                                                                  | Required            | Description                                             |
+| ------------- | --------------------------------------------------------------------- | ------------------- | ------------------------------------------------------- |
+| `action`      | `"run"` \| `"status"` \| `"resume"` \| `"abort"` \| `"notifications"` | Yes                 | Action to perform                                       |
+| `issueNumber` | number                                                                | For `run`           | GitHub issue number                                     |
+| `milestone`   | string                                                                | For `run`           | Milestone label for multi-issue mode                    |
+| `hotfix`      | boolean                                                               | No                  | Run in hotfix mode (post-hoc review)                    |
+| `forceStage`  | string                                                                | No                  | Force start at a specific stage                         |
+| `detach`      | boolean                                                               | No                  | Run as background process (default: `true` from plugin) |
+| `since`       | string                                                                | For `notifications` | ISO 8601 timestamp to filter notifications              |
+
+## Pipeline Stages
+
+| Stage           | Agent            | Description                          | Timeout |
+| --------------- | ---------------- | ------------------------------------ | ------- |
+| 0 — Preflight   | —                | Environment checks                   | 2m      |
+| 1 — Blueprint   | Blueprint        | Planning                             | 10m     |
+| 2 — Wrench      | Wrench           | Implementation                       | 2h      |
+| 2.5 — PR        | —                | PR creation                          | 1m      |
+| 3 — Audit       | Scope            | Completeness audit                   | 5m      |
+| 3.5 — Audit Fix | Wrench           | Fix audit findings                   | 10m     |
+| 4 — Review      | Scope            | Code review                          | 5m      |
+| 5 — Fix Loop    | Wrench/Wrench Sr | Fix review findings (max 5 rounds)   | 10m     |
+| Cycle 2         | Gemini           | External review loop (max 20 rounds) | 20m     |
+| 7 — Docs        | Quill            | Documentation (opt-in)               | 10m     |
+| 8 — Approval    | —                | Human approval gate                  | 24h     |
+| 8c — Merge      | —                | Squash merge + branch delete         | 2m      |
+| 9 — Deploy      | —                | PM2 restart + health check           | 5m      |
+| 10 — QA         | Beaker           | QA sweep                             | 10m     |
+| 11 — Hotfix     | Scope/Wrench     | Post-hoc hotfix review               | 30m     |
+| 12 — Lessons    | —                | Lessons learned generation           | 2m      |
+
+## Configuration
+
+### Plugin Config (`openclaw.json`)
+
+| Key                             | Default             | Description                              |
+| ------------------------------- | ------------------- | ---------------------------------------- |
+| `repoPath`                      | `.`                 | Target repository path                   |
+| `factoryPath`                   | `factory`           | Factory directory with prompts and state |
+| `pythonCommand`                 | `railclaw-pipeline` | Python CLI command or venv path          |
+| `stateDir`                      | `.pipeline-state`   | State file directory                     |
+| `eventsDir`                     | `.pipeline-events`  | Event log directory                      |
+| `agents.*`                      | —                   | Per-agent model and timeout              |
+| `timing.geminiPollInterval`     | `60`                | Seconds between Gemini review polls      |
+| `timing.approvalTimeout`        | `86400`             | Max seconds to wait for human approval   |
+| `escalation.wrenchSrAfterRound` | `3`                 | Switch to Wrench Sr after N fix rounds   |
+| `escalation.chrisAfterRound`    | `5`                 | Escalate to Chris after N fix rounds     |
+
+### Per-Repo Config (`.pipeline.json`)
+
+Place a `.pipeline.json` at the repo root to override plugin defaults:
+
+```json
+{
+  "factoryPath": "../factory",
+  "agents": {
+    "blueprint": { "model": "openai/gpt-5.4", "timeout": 600 }
+  }
+}
+```
 
 ### Hotfix Mode
 
-Set `hotfix: true` to run post-hoc review on a direct-to-main hotfix. Bypasses stages 1-2.5, runs Scope review on the diff, creates a follow-up PR if findings exist.
+Set `hotfix: true` to run post-hoc review on a direct-to-main hotfix. Bypasses stages 0-2.5, runs Scope review on the diff, creates a follow-up PR if findings exist.
 
 ## Architecture
 
+See [architecture.md](architecture.md) for the full system design.
+
 ```
 railclaw-pipeline/
-  src/                          # TypeScript plugin layer (~50-100 lines logic)
-    index.ts                    # definePluginEntry — registration + wiring
-    tool.ts                     # api.registerTool() + TypeBox parameter schema
-    config.ts                   # Plugin config normalization
-    python-bridge.ts            # Subprocess wrapper around Python CLI
-    store.ts                    # Runtime store for active run metadata
-    hooks.ts                    # Lifecycle hooks (startup/shutdown)
+  src/                          TypeScript plugin layer
+    index.ts                    Plugin registration
+    tool.ts                     pipeline_run tool + TypeBox schema
+    config.ts                   Config normalization
+    python-bridge.ts            Subprocess wrapper + PID tracking
+    store.ts                    Runtime store for active runs
+    hooks.ts                    Gateway lifecycle hooks
   python/
     src/railclaw_pipeline/
-      cli.py                    # Click CLI: run, status, resume, abort
-      config.py                 # Settings from env/CLI/plugin config
-      pipeline.py               # Stage runner orchestrator
-      state/                    # Pydantic models + atomic JSON persistence
-      runner/                   # Agent subprocess execution
-      stages/                   # Pipeline stage implementations
-      github/                   # Git/gh CLI wrappers
-      prompts/                  # Jinja2 template loader (sandboxed)
-      events/                   # JSON lines event emitter
-      milestone/                # Multi-issue milestone mode
+      cli.py                    Click CLI
+      pipeline.py               Stage runner orchestrator
+      state/                    Pydantic models + atomic persistence
+      runner/                   Agent subprocess execution
+      stages/                   Pipeline stage implementations
+      events/                   Event + notification emitters
+      github/                   Git/gh CLI wrappers
+      prompts/                  Jinja2 template loader (sandboxed)
+      milestone/                Multi-issue milestone mode
 ```
-
-### Pipeline Stages
-
-| Stage | Agent | Description |
-|-------|-------|-------------|
-| 0 — Preflight | — | Environment checks |
-| 1 — Blueprint | Blueprint | Planning |
-| 2 — Wrench | Wrench | Implementation |
-| 2.5 — PR | — | PR creation |
-| 3 — Audit | Scope | Completeness audit |
-| 3.5 — Audit Fix | Wrench | Fix audit findings |
-| 4 — Review | Scope | Code review |
-| 5 — Fix Loop | Wrench/Wrench Sr | Fix review findings (max 5 rounds) |
-| Cycle 2 | Gemini | External review loop |
-| 7 — Docs | Quill | Documentation (opt-in) |
-| 8 — Approval | — | Human approval gate |
-| 8c — Merge | — | Squash merge + branch delete |
-| 9 — Deploy | — | PM2 restart + health check |
-| 10 — QA | Beaker | QA sweep |
-| 11 — Hotfix | Scope/Wrench | Post-hoc hotfix review |
-| 12 — Lessons | — | Lessons learned generation |
-
-### Security
-
-- `shell=False` on all subprocess calls
-- Jinja2 sandboxed templates (SSTI protection)
-- Branch name sanitization before use in commands/paths
-- No secrets in state files or event logs
 
 ## Development
 
 ```bash
 npm install                    # Install JS deps + Python package
 npm run build                  # TypeScript compile
-npm run test                   # JS tests
-npm run test:py                # Python tests
+npm run test                   # JS tests (Vitest)
+npm run test:py                # Python tests (pytest)
 npm run lint                   # ESLint
 npm run lint:py                # Ruff
 npm run typecheck              # tsc --noEmit
@@ -143,6 +164,14 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ruff check src/
 ```
+
+## Security
+
+- `shell=False` on all subprocess calls
+- Jinja2 sandboxed templates (SSTI protection)
+- Branch name sanitization before use in commands/paths
+- No secrets in state files or event logs
+- Atomic file writes for crash recovery
 
 ## License
 
