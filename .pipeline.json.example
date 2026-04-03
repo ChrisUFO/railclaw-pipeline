@@ -1,0 +1,19 @@
+{
+  "factoryPath": "../factory",
+  "agents": {
+    "blueprint": { "model": "<blueprint-model>", "timeout": 600 },
+    "wrench": { "model": "<wrench-model>", "timeout": 1200 },
+    "scope": { "model": "<scope-model>", "timeout": 600 },
+    "beaker": { "model": "<beaker-model>", "timeout": 600 },
+    "wrenchSr": { "model": "<wrench-sr-model>", "timeout": 1200 }
+  },
+  "timing": {
+    "geminiPollInterval": 60,
+    "approvalTimeout": 86400,
+    "healthCheckTimeout": 30
+  },
+  "escalation": {
+    "wrenchSrAfterRound": 3,
+    "chrisAfterRound": 5
+  }
+}

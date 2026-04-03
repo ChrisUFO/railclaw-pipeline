@@ -22,6 +22,9 @@ export function spawnPythonBridge(
   return new Promise((resolve) => {
     const args: string[] = [params.action];
 
+    args.push("--repo-path", config.repoPath);
+    args.push("--factory-path", config.factoryPath);
+
     if (params.issueNumber !== undefined) {
       args.push("--issue", params.issueNumber.toString());
     }
