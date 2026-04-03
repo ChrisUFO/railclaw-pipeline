@@ -1,13 +1,15 @@
 {
   "id": "railclaw-pipeline",
   "name": "RailClaw Pipeline Orchestrator",
-  "description": "Automated coding factory pipeline: planning → implementation → review → merge → deploy → QA",
+  "description": "Automated coding factory pipeline: planning \u2192 implementation \u2192 review \u2192 merge \u2192 deploy \u2192 QA",
   "version": "0.1.0",
   "author": "Chris Harrison",
   "license": "MIT",
   "repository": "https://github.com/ChrisUFO/railclaw-pipeline",
   "main": "dist/index.js",
-  "extensions": ["./dist/index.js"],
+  "extensions": [
+    "./dist/index.js"
+  ],
   "compat": {
     "pluginApi": ">=2026.3.24-beta.2",
     "minGatewayVersion": "2026.3.24-beta.2"
@@ -15,5 +17,124 @@
   "build": {
     "openclawVersion": "2026.3.24-beta.2",
     "pluginSdkVersion": "2026.3.24-beta.2"
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "repoPath": {
+        "type": "string",
+        "description": "Path to the Git repository"
+      },
+      "factoryPath": {
+        "type": "string",
+        "description": "Path to factory/ directory"
+      },
+      "pythonCommand": {
+        "type": "string",
+        "description": "Python command or venv path"
+      },
+      "stateDir": {
+        "type": "string",
+        "description": "Pipeline state directory"
+      },
+      "eventsDir": {
+        "type": "string",
+        "description": "Pipeline events directory"
+      },
+      "agents": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "blueprint": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          },
+          "wrench": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          },
+          "scope": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          },
+          "beaker": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          },
+          "wrenchSr": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "timing": {
+        "type": "object",
+        "properties": {
+          "geminiPollInterval": {
+            "type": "number"
+          },
+          "approvalTimeout": {
+            "type": "number"
+          },
+          "healthCheckTimeout": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": true
+      },
+      "escalation": {
+        "type": "object",
+        "properties": {
+          "wrenchSrAfterRound": {
+            "type": "number"
+          },
+          "chrisAfterRound": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
   }
 }
