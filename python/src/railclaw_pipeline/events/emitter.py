@@ -11,17 +11,18 @@ MAX_EVENT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ROTATED_FILES = 3
 
 
+MAX_STDOUT_CHARS = 10_000
+
+
 class EventEmitter:
-    """Buffers events in memory, flushes to disk periodically."""
+    """Buffers events in memory, flushes to disk on demand."""
 
     def __init__(
         self,
         events_path: Path,
-        flush_interval: float = 30.0,
         run_dir: Path | None = None,
     ):
         self.events_path = events_path
-        self.flush_interval = flush_interval
         self.run_dir = run_dir
         self._buffer: deque[str] = deque()
         self._lock = threading.Lock()
@@ -55,9 +56,9 @@ class EventEmitter:
             with self._lock:
                 with open(log_file, "a") as f:
                     if stdout:
-                        f.write(f"--- STDOUT {ts} ---\n{stdout}\n")
+                        f.write(f"--- STDOUT {ts} ---\n{stdout[:MAX_STDOUT_CHARS]}\n")
                     if stderr:
-                        f.write(f"--- STDERR {ts} ---\n{stderr}\n")
+                        f.write(f"--- STDERR {ts} ---\n{stderr[:MAX_STDOUT_CHARS]}\n")
 
     def flush_now(self) -> None:
         """Flush immediately - called on stage transitions and shutdown."""
@@ -67,12 +68,12 @@ class EventEmitter:
             lines = list(self._buffer)
             self._buffer.clear()
 
-        with open(self.events_path, "a") as f:
-            for line in lines:
-                f.write(line + "\n")
-            f.flush()
+            with open(self.events_path, "a") as f:
+                for line in lines:
+                    f.write(line + "\n")
+                f.flush()
 
-        self._rotate_events()
+            self._rotate_events()
 
     def _rotate_events(self) -> None:
         """Rotate events.jsonl at 10MB, keep 3 archives."""

@@ -111,6 +111,8 @@ async def run_gemini_loop(
         cli="opencode",
         duration_s=scope_result.duration,
         success=scope_result.success,
+        stdout=scope_result.stdout,
+        stderr=scope_result.stderr,
     )
 
     scope_findings = _parse_scope_findings(scope_result.stdout)
@@ -260,6 +262,8 @@ async def _run_wrench_fix(
         cli="opencode",
         duration_s=result.duration,
         success=result.success,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )
 
     if not result.success:
@@ -298,6 +302,8 @@ async def _run_wrench_sr_fix(
         cli="gemini",
         duration_s=result.duration,
         success=result.success,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )
 
     if not result.success:
