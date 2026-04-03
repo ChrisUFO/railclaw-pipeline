@@ -105,18 +105,18 @@ def test_extract_gemini_findings_from_comments():
 
 
 def test_get_agent_config_no_timeout(tmp_path):
-    """_get_agent_config should not include --timeout in args_template."""
-    from railclaw_pipeline.stages.cycle2_gemini import _get_agent_config
+    """get_agent_config should not include --timeout in args_template."""
+    from railclaw_pipeline.runner.agent_config import get_agent_config
 
     config = PipelineConfig({
         "repoPath": str(tmp_path),
         "factoryPath": str(tmp_path / "factory"),
     })
-    wrench_config = _get_agent_config(config, "wrench")
+    wrench_config = get_agent_config(config, "wrench")
     assert "--timeout" not in wrench_config.args_template
     assert "{prompt}" in wrench_config.args_template
 
-    blueprint_config = _get_agent_config(config, "blueprint")
+    blueprint_config = get_agent_config(config, "blueprint")
     assert "--timeout" not in blueprint_config.args_template
 
 

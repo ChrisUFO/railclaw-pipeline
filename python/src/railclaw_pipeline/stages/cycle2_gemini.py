@@ -19,6 +19,7 @@ from railclaw_pipeline.github.review import (
 )
 from railclaw_pipeline.prompts.loader import render_template
 from railclaw_pipeline.runner.agent import AgentConfig, AgentRunner
+from railclaw_pipeline.runner.agent_config import get_agent_config
 from railclaw_pipeline.state.models import PipelineState
 from railclaw_pipeline.state.persistence import save_state
 
@@ -88,7 +89,7 @@ async def run_gemini_loop(
     if use_wrench_sr:
         await _run_wrench_sr_fix(state, config, emitter, findings)
     else:
-        wrench_config = _get_agent_config(config, "wrench")
+        wrench_config = get_agent_config(config, "wrench")
         wrench_runner = AgentRunner(wrench_config, config.repo_path)
         await _run_wrench_fix(state, config, emitter, wrench_runner, findings)
 
@@ -272,7 +273,7 @@ async def _run_wrench_sr_fix(
     findings: list[dict[str, Any]],
 ) -> None:
     """Run Wrench Sr (Gemini CLI) for complex fixes."""
-    wrench_sr_config = _get_agent_config(config, "wrenchSr")
+    wrench_sr_config = get_agent_config(config, "wrenchSr")
     runner = AgentRunner(wrench_sr_config, config.repo_path)
 
     findings_text = _format_findings(findings)
@@ -362,31 +363,3 @@ def _parse_verdict(output: str) -> str:
         return "pass"
     return "revision"
 
-
-def _get_agent_config(config: PipelineConfig, agent_name: str) -> AgentConfig:
-    """Build AgentConfig for a named agent. NOTE: duplicates pipeline.py — keep in sync."""
-    agent_cfg = config.agents.get(agent_name, {})
-    model = agent_cfg.get("model", "")
-    timeout = agent_cfg.get("timeout", 600)
-
-    workdir = config.repo_path
-    command = "opencode"
-    args_template = ["run", "--dir", str(workdir), "{prompt}"]
-
-    if agent_name in ("wrenchSr", "scout"):
-        command = "gemini"
-        args_template = ["--model", model, "{prompt}"]
-    elif agent_name in ("blueprint", "wrench", "scope", "beaker", "quill"):
-        env_dir = config.factory_path / "envs" / agent_name
-        if env_dir.exists():
-            workdir = env_dir
-        args_template = ["run", "--dir", str(workdir), "{prompt}"]
-
-    return AgentConfig(
-        name=agent_name,
-        model=model,
-        timeout=timeout,
-        command=command,
-        args_template=args_template,
-        workdir=workdir,
-    )

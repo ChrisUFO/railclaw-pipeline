@@ -47,3 +47,17 @@ def test_cleanup_keeps_recent(tmp_path: Path):
     deleted = cleanup_old_runs(tmp_path, max_age_days=30)
     assert deleted == []
     assert recent_dir.exists()
+
+
+def test_cleanup_dry_run(tmp_path: Path):
+    """dry_run reports what would be deleted without deleting."""
+    old_dir = tmp_path / "issue-old"
+    old_dir.mkdir()
+
+    old_mtime = time.time() - (35 * 86400)
+    os.utime(old_dir, (old_mtime, old_mtime))
+
+    deleted = cleanup_old_runs(tmp_path, max_age_days=30, dry_run=True)
+    assert len(deleted) == 1
+    assert str(old_dir) in deleted
+    assert old_dir.exists()  # still there — dry run

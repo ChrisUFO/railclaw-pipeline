@@ -52,11 +52,12 @@ class EventEmitter:
             ts = event["ts"]
             agent = kwargs.get("agent", "unknown")
             log_file = self.run_dir / f"{event_type}_{agent}.log"
-            with open(log_file, "a") as f:
-                if stdout:
-                    f.write(f"--- STDOUT {ts} ---\n{stdout}\n")
-                if stderr:
-                    f.write(f"--- STDERR {ts} ---\n{stderr}\n")
+            with self._lock:
+                with open(log_file, "a") as f:
+                    if stdout:
+                        f.write(f"--- STDOUT {ts} ---\n{stdout}\n")
+                    if stderr:
+                        f.write(f"--- STDERR {ts} ---\n{stderr}\n")
 
     def flush_now(self) -> None:
         """Flush immediately - called on stage transitions and shutdown."""
