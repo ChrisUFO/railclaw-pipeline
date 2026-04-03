@@ -46,12 +46,11 @@ export interface RepoPipelineConfig {
 }
 
 const DEFAULT_CONFIG: PluginConfig = {
-  repoPath: "/home/chris/.openclaw/agents/railrunner/workspace/repos/RailClaw",
-  factoryPath: "/home/chris/.openclaw/agents/railrunner/workspace/factory",
-  pythonCommand:
-    "/home/chris/.openclaw/agents/railrunner/workspace/repos/railclaw-pipeline/python/.venv/bin/railclaw-pipeline",
-  stateDir: "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-state",
-  eventsDir: "/home/chris/.openclaw/agents/railrunner/workspace/factory/.pipeline-events",
+  repoPath: "",
+  factoryPath: "factory",
+  pythonCommand: "railclaw-pipeline",
+  stateDir: ".pipeline-state",
+  eventsDir: ".pipeline-events",
   agents: {
     blueprint: { model: "openai/gpt-5.4", timeout: 600 },
     wrench: { model: "zai/glm-5-turbo", timeout: 1200 },
