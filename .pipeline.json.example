@@ -1,11 +1,11 @@
 {
   "factoryPath": "../factory",
   "agents": {
-    "blueprint": { "model": "openai/gpt-5.4", "timeout": 600 },
-    "wrench": { "model": "zai/glm-5-turbo", "timeout": 1200 },
-    "scope": { "model": "minimax/MiniMax-M2.7", "timeout": 600 },
-    "beaker": { "model": "openai/gpt-5.4-mini", "timeout": 600 },
-    "wrenchSr": { "model": "gemini/gemini-3.1-pro-preview", "timeout": 1200 }
+    "blueprint": { "model": "<blueprint-model>", "timeout": 600 },
+    "wrench": { "model": "<wrench-model>", "timeout": 1200 },
+    "scope": { "model": "<scope-model>", "timeout": 600 },
+    "beaker": { "model": "<beaker-model>", "timeout": 600 },
+    "wrenchSr": { "model": "<wrench-sr-model>", "timeout": 1200 }
   },
   "timing": {
     "geminiPollInterval": 60,

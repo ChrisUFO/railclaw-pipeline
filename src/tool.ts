@@ -1,13 +1,18 @@
 import { Type, Static } from "@sinclair/typebox";
+import * as fs from "fs";
+import * as path from "path";
 import { spawnPythonBridge } from "./python-bridge.js";
 import type { PluginConfig } from "./config.js";
 import { buildRuntimeConfig } from "./config.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
 export const PipelineRunParameters = Type.Object({
-  repoPath: Type.String({
-    description: "Absolute path to the target git repo. Plugin resolves .pipeline.json from here.",
-  }),
+  repoPath: Type.Optional(
+    Type.String({
+      description:
+        "Absolute path to the target git repo. Plugin resolves .pipeline.json from here.",
+    }),
+  ),
   action: Type.Union([
     Type.Literal("run"),
     Type.Literal("status"),
@@ -30,6 +35,15 @@ export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfi
     description: "Run the coding factory pipeline for an issue or milestone",
     parameters: PipelineRunParameters,
     async execute(_id: string, params: PipelineRunParams) {
+      // Resolve a concrete repo path from explicit param, env, or CWD
+      const providedRepoPath = (params as any).repoPath as string | undefined;
+      const repoPath = providedRepoPath ?? process.env.RAILCLAW_REPO_PATH ?? process.cwd();
+      // Validate repoPath if provided or when enforcing env defaults
+      if (typeof providedRepoPath === "string" || !process.env.RAILCLAW_REPO_PATH) {
+        if (!fs.existsSync(repoPath) || !fs.existsSync(path.join(repoPath, ".git"))) {
+          throw new Error("Invalid repoPath: not a git repository");
+        }
+      }
       if (params.action === "run" && !params.issueNumber && !params.milestone) {
         return {
           content: [
@@ -46,7 +60,7 @@ export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfi
       }
 
       // Build per-call config: merge .pipeline.json over plugin defaults
-      const runtimeConfig = buildRuntimeConfig(config, params.repoPath);
+      const runtimeConfig = buildRuntimeConfig(config, repoPath);
 
       const result = await spawnPythonBridge(runtimeConfig, params);
 

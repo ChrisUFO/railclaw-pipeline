@@ -40,6 +40,9 @@ export interface RepoPipelineConfig {
   timing?: PluginConfig["timing"];
   pm2?: PluginConfig["pm2"];
   escalation?: PluginConfig["escalation"];
+  // Internal: directory where the .pipeline.json was found. Used to resolve
+  // relative paths (eg. factoryPath) relative to the config location.
+  __configDir?: string;
 }
 
 const DEFAULT_CONFIG: PluginConfig = {
@@ -79,15 +82,61 @@ export function resolveRepoPipelineConfig(startDir: string): RepoPipelineConfig 
   let dir = path.resolve(startDir);
   const root = path.parse(dir).root;
 
+  // Walk up the directory tree but stop at the git repo root (dir containing .git)
   while (dir !== root) {
     const candidate = path.join(dir, ".pipeline.json");
     try {
       if (fs.existsSync(candidate)) {
-        const raw = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+        // Read and validate the config
+        const rawRaw = fs.readFileSync(candidate, "utf-8");
+        const raw = JSON.parse(rawRaw) as RepoPipelineConfig;
+        // Basic runtime validation of the shape
+        // Allow omission of fields; validate types when present
+        if (raw && typeof raw === "object") {
+          // Shallow structural validation
+          if (raw.factoryPath !== undefined && typeof raw.factoryPath !== "string") {
+            throw new Error("Invalid type for factoryPath in .pipeline.json");
+          }
+          if (raw.agents !== undefined && typeof raw.agents !== "object") {
+            throw new Error("Invalid type for agents in .pipeline.json");
+          }
+          if (raw.timing !== undefined && typeof raw.timing !== "object") {
+            throw new Error("Invalid type for timing in .pipeline.json");
+          }
+          if (raw.pm2 !== undefined && typeof raw.pm2 !== "object") {
+            throw new Error("Invalid type for pm2 in .pipeline.json");
+          }
+          if (raw.escalation !== undefined && typeof raw.escalation !== "object") {
+            throw new Error("Invalid type for escalation in .pipeline.json");
+          }
+        }
+        // Attach configDir so downstream can resolve relative paths from this directory
+        (raw as RepoPipelineConfig).__configDir = dir;
         return raw as RepoPipelineConfig;
       }
-    } catch {
-      // File exists but is malformed — skip and keep walking up
+    } catch (err) {
+      // Re-throw validation errors directly (they have their own messages)
+      if (err instanceof Error && err.message.startsWith("Invalid type for")) {
+        throw err;
+      }
+      // File exists but is malformed (parse error) — log and decide whether to fail at repo root
+      // If we are at the repo root (dir contains a .git), escalate for visibility
+      const candidatePath = path.join(dir, ".pipeline.json");
+      const gitDir = path.join(dir, ".git");
+      if (fs.existsSync(gitDir) && fs.statSync(gitDir).isDirectory()) {
+        // Malformed at repo root: rethrow to fail loudly
+        console.error(`Malformed or unreadable .pipeline.json at repo root: ${candidatePath}`);
+        throw new Error(`Malformed .pipeline.json at repo root: ${candidatePath}`);
+      } else {
+        console.warn(`Malformed or unreadable .pipeline.json at ${candidatePath}, continuing walk`);
+      }
+    }
+    // Before ascending, check if current dir is a git root.
+    // If we're about to leave the git repo without finding .pipeline.json, stop.
+    const currentGit = path.join(dir, ".git");
+    if (fs.existsSync(currentGit) && fs.statSync(currentGit).isDirectory()) {
+      // We're at a git root with no .pipeline.json — stop traversal
+      break;
     }
     const parent = path.dirname(dir);
     if (parent === dir) break;
@@ -101,18 +150,17 @@ export function resolveRepoPipelineConfig(startDir: string): RepoPipelineConfig 
  * Merge per-repo `.pipeline.json` config over the plugin-level defaults.
  * `repoPath` overrides the plugin-level repoPath.
  */
-export function buildRuntimeConfig(
-  pluginConfig: PluginConfig,
-  repoPath: string,
-): PluginConfig {
+export function buildRuntimeConfig(pluginConfig: PluginConfig, repoPath: string): PluginConfig {
   const repoConfig = resolveRepoPipelineConfig(repoPath);
+  // Determine base directory for relative resolutions
+  const configDir = (repoConfig as any)?.__configDir ?? repoPath;
 
-  // If repoConfig specifies a factoryPath, resolve it relative to where the .pipeline.json was found
+  // If repoConfig specifies a factoryPath, resolve it relative to the location of the config
   let factoryPath = pluginConfig.factoryPath;
   if (repoConfig?.factoryPath) {
     factoryPath = path.isAbsolute(repoConfig.factoryPath)
       ? repoConfig.factoryPath
-      : path.join(repoPath, repoConfig.factoryPath);
+      : path.resolve(configDir, repoConfig.factoryPath);
   }
 
   return {
