@@ -31,10 +31,10 @@ def cleanup_old_runs(
     for run_dir in sorted(base_dir.iterdir()):
         if not run_dir.is_dir():
             continue
-        mtime = datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc)
-        if mtime < cutoff:
+        ctime = datetime.fromtimestamp(run_dir.stat().st_ctime, tz=timezone.utc)
+        if ctime < cutoff:
             if dry_run:
-                logger.info("dry-run: would delete %s (mtime=%s)", run_dir, mtime)
+                logger.info("dry-run: would delete %s (ctime=%s)", run_dir, ctime)
             else:
                 shutil.rmtree(run_dir)
             deleted.append(str(run_dir))

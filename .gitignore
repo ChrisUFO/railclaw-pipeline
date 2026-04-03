@@ -58,6 +58,7 @@ logs/
 
 # ── Reference copies (not part of repo) ───────────────────────
 _refs/
+factory/checkpoint-*.md
 # Pipeline runtime state
 .factory/
 *.egg-info/

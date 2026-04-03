@@ -56,9 +56,15 @@ class EventEmitter:
             with self._lock:
                 with open(log_file, "a") as f:
                     if stdout:
+                        truncated = len(stdout) > MAX_STDOUT_CHARS
                         f.write(f"--- STDOUT {ts} ---\n{stdout[:MAX_STDOUT_CHARS]}\n")
+                        if truncated:
+                            f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
                     if stderr:
+                        truncated = len(stderr) > MAX_STDOUT_CHARS
                         f.write(f"--- STDERR {ts} ---\n{stderr[:MAX_STDOUT_CHARS]}\n")
+                        if truncated:
+                            f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
 
     def flush_now(self) -> None:
         """Flush immediately - called on stage transitions and shutdown."""
