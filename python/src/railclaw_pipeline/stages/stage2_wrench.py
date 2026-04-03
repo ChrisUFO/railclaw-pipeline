@@ -50,6 +50,7 @@ async def run_wrench(
         "repo_path": str(repo),
         "branch": state.branch,
         "plan_path": str(plan_path),
+        "start_phase": getattr(state, 'start_phase', 1),
     }
 
     prompt = render_template(config.factory_path, "wrench.j2", context)
