@@ -58,3 +58,11 @@ logs/
 
 # ── Reference copies (not part of repo) ───────────────────────
 _refs/
+# Pipeline runtime state
+.factory/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+node_modules/
