@@ -68,7 +68,11 @@ def run(
             "error": "issue or milestone is required"
         })
         return
-    
+
+    if repo_path:
+        os.environ["RAILCLAW_REPO_PATH"] = repo_path
+    if factory_path:
+        os.environ["RAILCLAW_FACTORY_PATH"] = factory_path
     if state_dir:
         os.environ["RAILCLAW_STATE_DIR"] = state_dir
     state_path = get_state_path()
