@@ -15,6 +15,7 @@ from railclaw_pipeline.github.checkpoint import (
     update_checkpoint,
 )
 from railclaw_pipeline.runner.agent import AgentRunner
+from railclaw_pipeline.runner.agent_config import get_agent_config
 from railclaw_pipeline.state.models import PipelineStage, PipelineState, PipelineStatus
 from railclaw_pipeline.state.persistence import save_state
 
@@ -156,14 +157,14 @@ async def run_pipeline(
     from railclaw_pipeline.stages.stage11_hotfix import run_hotfix
     from railclaw_pipeline.stages.stage12_lessons import run_lessons
 
-    blueprint_config = _get_agent_config(config, "blueprint")
-    wrench_config = _get_agent_config(config, "wrench")
-    scope_config = _get_agent_config(config, "scope")
+    blueprint_config = get_agent_config(config, "blueprint")
+    wrench_config = get_agent_config(config, "wrench")
+    scope_config = get_agent_config(config, "scope")
 
     try:
         if hotfix:
-            wrench_runner = AgentRunner(_get_agent_config(config, "wrench"), config.repo_path)
-            scope_runner = AgentRunner(_get_agent_config(config, "scope"), config.repo_path)
+            wrench_runner = AgentRunner(get_agent_config(config, "wrench"), config.repo_path)
+            scope_runner = AgentRunner(get_agent_config(config, "scope"), config.repo_path)
             state = await run_stage(
                 "stage11_hotfix", run_hotfix, state, config, emitter,
                 wrench_runner, scope_runner,
@@ -234,6 +235,10 @@ async def run_pipeline(
             save_state(state, config.state_path)
 
             cur_count = len(state.findings.get("current", []))
+            logger.info(
+                "cycle2_round %d: findings=%d, gemini_clean=%s, stall=%d",
+                state.cycle.cycle2_round, cur_count, state.cycle.gemini_clean, stall,
+            )
             if cur_count >= prev_count:
                 stall += 1
             else:
@@ -259,7 +264,7 @@ async def run_pipeline(
         state = await run_stage("stage9_deploy", run_deploy, state, config, emitter)
         state = await run_stage(
             "stage10_qa", run_qa, state, config, emitter,
-            AgentRunner(_get_agent_config(config, "beaker"), config.repo_path),
+            AgentRunner(get_agent_config(config, "beaker"), config.repo_path),
         )
 
         state.status = PipelineStatus.COMPLETED
@@ -297,33 +302,3 @@ async def run_pipeline(
             archive_checkpoint(config.factory_path, state.issue_number)
         except Exception as cp_err:
             logger.warning("Failed to archive checkpoint: %s", cp_err)
-
-
-def _get_agent_config(config: PipelineConfig, agent_name: str) -> "AgentConfig":
-    from railclaw_pipeline.runner.agent import AgentConfig
-
-    agent_cfg = config.agents.get(agent_name, {})
-    model = agent_cfg.get("model", "")
-    timeout = agent_cfg.get("timeout", 600)
-
-    workdir = config.repo_path
-    command = "opencode"
-    args_template = ["run", "--dir", str(workdir), "{prompt}"]
-
-    if agent_name in ("wrenchSr", "scout"):
-        command = "gemini"
-        args_template = ["--model", model, "{prompt}"]
-    elif agent_name in ("blueprint", "wrench", "scope", "beaker", "quill"):
-        env_dir = config.factory_path / "envs" / agent_name
-        if env_dir.exists():
-            workdir = env_dir
-        args_template = ["run", "--dir", str(workdir), "{prompt}"]
-
-    return AgentConfig(
-        name=agent_name,
-        model=model,
-        timeout=timeout,
-        command=command,
-        args_template=args_template,
-        workdir=workdir,
-    )

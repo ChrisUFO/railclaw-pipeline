@@ -158,7 +158,8 @@ def extract_findings_from_reviews(reviews: list[dict[str, Any]]) -> list[ReviewF
             findings.extend(details_findings)
 
             # Also check for findings in non-details body
-            if not details_findings and state in ("CHANGES_REQUESTED", "COMMENTED"):
+            # COMMENTED without <details> is informational — skip
+            if not details_findings and state == "CHANGES_REQUESTED":
                 severity, category = classify_finding(body)
                 findings.append(ReviewFinding(
                     severity=severity,
@@ -206,7 +207,7 @@ async def poll_reviews(
     findings = extract_findings_from_comments(comments)
     findings.extend(extract_findings_from_reviews(reviews))
 
-    has_formal = any(r.get("state") in ("APPROVED", "CHANGES_REQUESTED") for r in reviews)
+    has_formal = any(r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED") for r in reviews)
 
     return ReviewResult(
         findings=findings,

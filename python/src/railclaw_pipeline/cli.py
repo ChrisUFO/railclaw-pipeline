@@ -114,7 +114,10 @@ def run(
         "repoPath": effective_repo,
         "factoryPath": effective_factory,
     })
-    emitter = EventEmitter(config.events_path)
+    run_dir = Path(effective_factory) / ".pipeline-events" / "runs" / (
+        f"issue-{issue}" if issue else f"manual-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    )
+    emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
     try:
         if hotfix:
@@ -239,6 +242,29 @@ def abort() -> None:
         "issueNumber": state.issue_number,
         "message": "Pipeline aborted",
         "statePath": str(state_path),
+    })
+
+
+@main.command()
+@click.option("--factory-path", type=str, help="Path to factory config directory")
+@click.option("--max-age-days", type=int, default=30, help="Delete runs older than this many days")
+@click.option("--dry-run", is_flag=True, default=False, help="Show what would be deleted without deleting")
+def cleanup(factory_path: str | None, max_age_days: int, dry_run: bool) -> None:
+    """Clean up old run logs."""
+    from railclaw_pipeline.utils.cleanup import cleanup_old_runs
+
+    effective_factory = factory_path or os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    runs_dir = Path(effective_factory) / ".pipeline-events" / "runs"
+
+    deleted = cleanup_old_runs(runs_dir, max_age_days, dry_run=dry_run)
+
+    output_result({
+        "ok": True,
+        "action": "cleanup",
+        "dry_run": dry_run,
+        "deleted": deleted,
+        "deleted_count": len(deleted),
+        "message": f"{'Would delete' if dry_run else 'Deleted'} {len(deleted)} old run directories",
     })
 
 
