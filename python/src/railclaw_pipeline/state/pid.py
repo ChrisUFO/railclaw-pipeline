@@ -1,10 +1,10 @@
 """PID file management for detached pipeline daemon."""
 
+import contextlib
 import os
 import sys
 import time
 from pathlib import Path
-
 
 if sys.platform == "win32":
     import ctypes
@@ -97,7 +97,5 @@ def kill_pid(pid: int, timeout: float = 10.0) -> bool:
 
 
 def remove_pid(pid_path: Path) -> None:
-    try:
+    with contextlib.suppress(FileNotFoundError):
         pid_path.unlink()
-    except FileNotFoundError:
-        pass

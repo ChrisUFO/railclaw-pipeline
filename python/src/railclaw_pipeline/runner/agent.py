@@ -3,8 +3,9 @@
 Supports opencode, gemini, and other CLI-based coding agents.
 """
 
+import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +53,7 @@ class AgentResult:
     returncode: int = 0
     timed_out: bool = False
     error: str | None = None
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
 
     @property
@@ -100,7 +101,7 @@ class AgentRunner:
         args = self.agent.build_args(workdir)
 
         command = [self.agent.command] + args
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
 
         try:
             result: SubprocessResult = await run_subprocess(
@@ -110,7 +111,7 @@ class AgentRunner:
                 timeout=effective_timeout,
                 input_text=prompt,
             )
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             verdict = parse_verdict(result.stdout, result.stderr, result.returncode)
 
             return AgentResult(
@@ -128,7 +129,7 @@ class AgentRunner:
         except (SystemExit, KeyboardInterrupt):
             raise
         except Exception as exc:
-            finished = datetime.now(timezone.utc)
+            finished = datetime.now(UTC)
             return AgentResult(
                 agent_name=self.agent.name,
                 verdict=AgentVerdict.ERROR,
@@ -141,8 +142,6 @@ class AgentRunner:
     async def kill(self) -> None:
         """Kill a running agent process."""
         if self._process:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 self._process.kill()
-            except ProcessLookupError:
-                pass
             self._process = None

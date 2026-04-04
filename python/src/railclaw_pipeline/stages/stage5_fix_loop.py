@@ -1,7 +1,7 @@
 """Stage 5: Fix Loop — Wrench fixes Scope review findings, max 5 rounds."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -64,13 +64,15 @@ async def run_fix_loop(
     )
 
     if not result.success:
-        raise RuntimeError(f"Fix loop round {round_num + 1} failed: {result.error or result.stderr[:500]}")
+        raise RuntimeError(
+            f"Fix loop round {round_num + 1} failed: {result.error or result.stderr[:500]}"
+        )
 
     history = state.findings.get("history", [])
     history.extend(current_findings)
     state.findings = {"current": [], "history": history}
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

@@ -1,5 +1,6 @@
 """Board JSON helpers — read/update factory/board.json."""
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -31,8 +32,8 @@ def save_board(factory_path: Path, board: dict[str, Any]) -> None:
     board_path.parent.mkdir(parents=True, exist_ok=True)
     data = json.dumps(board, indent=2, ensure_ascii=False)
 
-    import tempfile
     import os
+    import tempfile
     fd, tmp_path = tempfile.mkstemp(dir=str(board_path.parent), suffix=".tmp", prefix="board_")
     try:
         os.write(fd, data.encode("utf-8"))
@@ -40,10 +41,8 @@ def save_board(factory_path: Path, board: dict[str, Any]) -> None:
         os.close(fd)
         os.replace(tmp_path, str(board_path))
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 

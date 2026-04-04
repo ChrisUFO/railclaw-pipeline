@@ -1,8 +1,7 @@
 """Stage 1: Blueprint — planning agent produces PLAN.md."""
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from railclaw_pipeline.config import PipelineConfig
@@ -10,7 +9,7 @@ from railclaw_pipeline.events.emitter import EventEmitter
 from railclaw_pipeline.github.gh import GhClient
 from railclaw_pipeline.github.git import sanitize_branch_name
 from railclaw_pipeline.prompts.loader import render_template
-from railclaw_pipeline.runner.agent import AgentConfig, AgentRunner
+from railclaw_pipeline.runner.agent import AgentRunner
 from railclaw_pipeline.state.models import PipelineState
 from railclaw_pipeline.state.persistence import save_state
 
@@ -67,7 +66,7 @@ async def run_blueprint(
     if not plan_path.exists():
         raise RuntimeError(f"Blueprint did not produce PLAN.md at {plan_path}")
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

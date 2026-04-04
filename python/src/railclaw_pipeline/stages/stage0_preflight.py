@@ -2,8 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -63,6 +62,6 @@ async def run_preflight(
             raise PreflightError(f"Required tool not found: {tool_name}")
 
     emitter.emit("preflight_pass", issue=state.issue_number)
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state

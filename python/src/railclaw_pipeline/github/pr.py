@@ -12,6 +12,7 @@ from railclaw_pipeline.github.gh import GhClient, GhError
 
 class PrError(Exception):
     """Raised when a PR operation fails."""
+
     pass
 
 
@@ -44,10 +45,14 @@ class PrClient:
             Dict with pr_number, url, etc.
         """
         args: list[str] = [
-            "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--base", base,
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--base",
+            base,
         ]
         if head:
             args.extend(["--head", head])
@@ -68,7 +73,11 @@ class PrClient:
         except GhError as exc:
             raise PrError(f"Failed to create PR: {exc}") from exc
 
-    async def view(self, number: int, json_fields: str = "number,title,state,mergeable,headRefName") -> dict[str, Any]:
+    async def view(
+        self,
+        number: int,
+        json_fields: str = "number,title,state,mergeable,headRefName",
+    ) -> dict[str, Any]:
         """View PR details."""
         try:
             output = await self.gh._gh("pr", "view", str(number), "--json", json_fields, timeout=30)
@@ -90,8 +99,11 @@ class PrClient:
         """Merge a PR. Returns merge commit SHA or URL."""
         try:
             return await self.gh._gh(
-                "pr", "merge", str(number),
-                "--merge", merge_method,
+                "pr",
+                "merge",
+                str(number),
+                "--merge",
+                merge_method,
                 "--delete-branch",
                 timeout=60,
             )
@@ -111,9 +123,16 @@ class PrClient:
     ) -> list[dict[str, Any]]:
         """List PRs."""
         args: list[str] = [
-            "pr", "list", "--state", state, "--base", base,
-            "--limit", str(limit),
-            "--json", "number,title,headRefName,state,mergeable",
+            "pr",
+            "list",
+            "--state",
+            state,
+            "--base",
+            base,
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,headRefName,state,mergeable",
         ]
         if head:
             args.extend(["--head", head])
@@ -127,9 +146,14 @@ class PrClient:
         """Get PR comments."""
         try:
             output = await self.gh._gh(
-                "pr", "view", str(number),
-                "--json", "comments",
-                "--jq", ".comments[] | {author: .author.login, body: .body, createdAt: .createdAt, path: .path, line: .line}",
+                "pr",
+                "view",
+                str(number),
+                "--json",
+                "comments",
+                "--jq",
+                ".comments[] | {author: .author.login, body: .body, "
+                "createdAt: .createdAt, path: .path, line: .line}",
                 timeout=30,
             )
             if not output.strip():
@@ -142,9 +166,14 @@ class PrClient:
         """Get PR reviews."""
         try:
             output = await self.gh._gh(
-                "pr", "view", str(number),
-                "--json", "reviews",
-                "--jq", '.reviews[] | {author: .author.login, state: .state, body: .body, submittedAt: .submittedAt}',
+                "pr",
+                "view",
+                str(number),
+                "--json",
+                "reviews",
+                "--jq",
+                ".reviews[] | {author: .author.login, state: .state, "
+                "body: .body, submittedAt: .submittedAt}",
                 timeout=30,
             )
             if not output.strip():
