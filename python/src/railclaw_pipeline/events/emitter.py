@@ -3,9 +3,12 @@
 import json
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from railclaw_pipeline.events.notifications import NotificationPayload, write_notification
+from railclaw_pipeline.utils.rotation import rotate_jsonl
 
 MAX_EVENT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ROTATED_FILES = 3
@@ -30,6 +33,29 @@ class EventEmitter:
         if run_dir:
             run_dir.mkdir(parents=True, exist_ok=True)
 
+    def emit_notification(
+        self,
+        notif_type: str,
+        issue: int,
+        stage: str,
+        duration_s: float | None = None,
+        verdict: str | None = None,
+        findings_count: int | None = None,
+        next_stage: str | None = None,
+    ) -> None:
+        """Emit a structured stage handoff notification."""
+        payload = NotificationPayload(
+            ts=datetime.now(UTC).isoformat(),
+            type=notif_type,
+            issue=issue,
+            stage=stage,
+            duration_s=duration_s,
+            verdict=verdict,
+            findings_count=findings_count,
+            next_stage=next_stage,
+        )
+        write_notification(payload)
+
     def emit(
         self,
         event_type: str,
@@ -39,7 +65,7 @@ class EventEmitter:
     ) -> None:
         """Emit an event to the buffer."""
         event = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "type": event_type,
             **kwargs,
         }
@@ -53,18 +79,17 @@ class EventEmitter:
             ts = event["ts"]
             agent = kwargs.get("agent", "unknown")
             log_file = self.run_dir / f"{event_type}_{agent}.log"
-            with self._lock:
-                with open(log_file, "a") as f:
-                    if stdout:
-                        truncated = len(stdout) > MAX_STDOUT_CHARS
-                        f.write(f"--- STDOUT {ts} ---\n{stdout[:MAX_STDOUT_CHARS]}\n")
-                        if truncated:
-                            f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
-                    if stderr:
-                        truncated = len(stderr) > MAX_STDOUT_CHARS
-                        f.write(f"--- STDERR {ts} ---\n{stderr[:MAX_STDOUT_CHARS]}\n")
-                        if truncated:
-                            f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
+            with self._lock, open(log_file, "a") as f:
+                if stdout:
+                    truncated = len(stdout) > MAX_STDOUT_CHARS
+                    f.write(f"--- STDOUT {ts} ---\n{stdout[:MAX_STDOUT_CHARS]}\n")
+                    if truncated:
+                        f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
+                if stderr:
+                    truncated = len(stderr) > MAX_STDOUT_CHARS
+                    f.write(f"--- STDERR {ts} ---\n{stderr[:MAX_STDOUT_CHARS]}\n")
+                    if truncated:
+                        f.write(f"[truncated {MAX_STDOUT_CHARS} chars]\n")
 
     def flush_now(self) -> None:
         """Flush immediately - called on stage transitions and shutdown."""
@@ -83,20 +108,7 @@ class EventEmitter:
 
     def _rotate_events(self) -> None:
         """Rotate events.jsonl at 10MB, keep 3 archives."""
-        if not self.events_path.exists():
-            return
-        if self.events_path.stat().st_size < MAX_EVENT_FILE_SIZE:
-            return
-        # Shift existing archives
-        for i in range(MAX_ROTATED_FILES, 0, -1):
-            src = self.events_path.with_suffix(f".jsonl.{i}")
-            if src.exists():
-                if i == MAX_ROTATED_FILES:
-                    src.unlink()  # Delete oldest
-                else:
-                    dst = self.events_path.with_suffix(f".jsonl.{i + 1}")
-                    src.rename(dst)
-        self.events_path.rename(self.events_path.with_suffix(".jsonl.1"))
+        rotate_jsonl(self.events_path, MAX_EVENT_FILE_SIZE, MAX_ROTATED_FILES)
 
     def close(self) -> None:
         """Flush and close."""

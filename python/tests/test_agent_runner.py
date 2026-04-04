@@ -16,8 +16,9 @@ def test_agent_config_build_args():
         args_template=["run", "--dir", "{dir}", "{prompt}"],
         workdir=Path("/tmp"),
     )
-    args = config.build_args(Path("/work"))
-    assert args == ["run", "--dir", "/work"]
+    work = Path("/work")
+    args = config.build_args(work)
+    assert args == ["run", "--dir", str(work)]
 
 
 def test_agent_config_model_substitution():
@@ -41,7 +42,9 @@ def test_parse_verdict_revision():
 
 
 def test_parse_verdict_needs_human():
-    assert parse_verdict("RESULT_START\nstatus: needs-human\nRESULT_END") == AgentVerdict.NEEDS_HUMAN
+    assert (
+        parse_verdict("RESULT_START\nstatus: needs-human\nRESULT_END") == AgentVerdict.NEEDS_HUMAN
+    )
 
 
 def test_parse_verdict_timeout():

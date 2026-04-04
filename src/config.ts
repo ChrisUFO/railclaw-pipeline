@@ -153,7 +153,8 @@ export function resolveRepoPipelineConfig(startDir: string): RepoPipelineConfig 
 export function buildRuntimeConfig(pluginConfig: PluginConfig, repoPath: string): PluginConfig {
   const repoConfig = resolveRepoPipelineConfig(repoPath);
   // Determine base directory for relative resolutions
-  const configDir = (repoConfig as any)?.__configDir ?? repoPath;
+  const configDir =
+    (repoConfig as RepoPipelineConfig & { __configDir?: string })?.__configDir ?? repoPath;
 
   // If repoConfig specifies a factoryPath, resolve it relative to the location of the config
   let factoryPath = pluginConfig.factoryPath;

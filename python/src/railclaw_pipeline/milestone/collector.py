@@ -1,10 +1,10 @@
 """Milestone issue collector — gather issues from gh milestone."""
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from railclaw_pipeline.github.gh import GhClient
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,7 @@ def parse_plan_issues(plan_path: Path) -> list[int]:
                 if num not in numbers:
                     numbers.append(num)
 
-            if not stripped:
-                if numbers:
-                    break
+            if not stripped and numbers:
+                break
 
     return numbers

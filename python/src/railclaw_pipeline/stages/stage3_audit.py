@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
@@ -55,7 +55,7 @@ async def run_audit(
 
     emitter.emit("findings", issue=state.issue_number, stage="stage3_audit", count=len(findings))
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

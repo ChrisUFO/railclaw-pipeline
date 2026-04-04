@@ -6,10 +6,11 @@ import { registerLifecycleHooks } from "./hooks.js";
 export default definePluginEntry({
   id: "railclaw-pipeline",
   name: "RailClaw Pipeline Orchestrator",
-  description: "Automated coding factory pipeline: planning → implementation → review → merge → deploy → QA",
+  description:
+    "Automated coding factory pipeline: planning → implementation → review → merge → deploy → QA",
   register(api) {
     const config = normalizeConfig(api.pluginConfig ?? {});
     registerPipelineTool(api, config);
-    registerLifecycleHooks(api);
+    registerLifecycleHooks(api, config);
   },
 });

@@ -3,16 +3,16 @@
 Runs in the finally block of every pipeline run (success or failure).
 """
 
+import contextlib
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
-from railclaw_pipeline.state.models import PipelineState, PipelineStatus
+from railclaw_pipeline.state.models import PipelineState
 from railclaw_pipeline.state.persistence import save_state
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def run_lessons(
 
     entry = LESSONS_TEMPLATE.format(
         issue_number=state.issue_number,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
         result=result,
         duration=duration,
         branch=state.branch or "N/A",
@@ -85,7 +85,7 @@ async def run_lessons(
     )
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -152,10 +152,7 @@ def _append_error_summary(state: PipelineState) -> str:
 def _atomic_append(path: Path, data: str) -> None:
     """Safely append data to a file using atomic write pattern."""
     try:
-        if path.exists():
-            existing = path.read_text(encoding="utf-8")
-        else:
-            existing = ""
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
 
         fd, tmp_path = tempfile.mkstemp(
             dir=str(path.parent), suffix=".tmp", prefix="lessons_"
@@ -166,10 +163,8 @@ def _atomic_append(path: Path, data: str) -> None:
             os.close(fd)
             os.replace(tmp_path, str(path))
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise
     except Exception:
         logger.warning("Failed to write lessons learned", exc_info=True)

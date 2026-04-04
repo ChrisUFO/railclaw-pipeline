@@ -1,12 +1,8 @@
-import { vi, describe, it, expect } from 'vitest';
+import { vi, describe, it, expect } from "vitest";
 
 const VALID_PARAMS = {
   action: "run" as const,
   issueNumber: 42,
-};
-
-const VALID_STATUS_PARAMS = {
-  action: "status" as const,
 };
 
 const mockApi = {
@@ -69,5 +65,32 @@ describe("tool schema", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.ok).toBe(false);
     expect(parsed.error).toContain("required");
+  });
+
+  it("schema includes detach parameter", async () => {
+    const { PipelineRunParameters } = await import("../src/tool.js");
+    const schema = PipelineRunParameters;
+    const props = (schema as any).properties;
+    expect(props).toHaveProperty("detach");
+  });
+
+  it("schema includes notifications action", async () => {
+    const { PipelineRunParameters } = await import("../src/tool.js");
+    const schema = PipelineRunParameters;
+    const actionSchema = (schema as any).properties.action;
+    const anyOf = actionSchema.anyOf || actionSchema.allOf;
+    const literals = anyOf
+      ? anyOf.map((s: any) => s.const)
+      : actionSchema.const
+        ? [actionSchema.const]
+        : [];
+    expect(literals).toContain("notifications");
+  });
+
+  it("schema includes since parameter", async () => {
+    const { PipelineRunParameters } = await import("../src/tool.js");
+    const schema = PipelineRunParameters;
+    const props = (schema as any).properties;
+    expect(props).toHaveProperty("since");
   });
 });

@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
@@ -58,7 +58,7 @@ async def run_review(
 
     emitter.emit("review_result", issue=state.issue_number, verdict=verdict, findings=len(findings))
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -68,7 +68,11 @@ def _parse_verdict(output: str) -> str:
     match = re.search(r"verdict:\s*(pass|revision|needs-human)", output, re.IGNORECASE)
     if match:
         return match.group(1).lower()
-    if re.search(r"REVIEW_START.*?verdict:\s*(pass|revision|needs-human)", output, re.DOTALL | re.IGNORECASE):
+    if re.search(
+        r"REVIEW_START.*?verdict:\s*(pass|revision|needs-human)",
+        output,
+        re.DOTALL | re.IGNORECASE,
+    ):
         m = re.search(r"verdict:\s*(\S+)", output, re.IGNORECASE)
         if m:
             return m.group(1).lower()

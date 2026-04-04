@@ -18,17 +18,20 @@ export const PipelineRunParameters = Type.Object({
     Type.Literal("status"),
     Type.Literal("resume"),
     Type.Literal("abort"),
+    Type.Literal("notifications"),
   ]),
   issueNumber: Type.Optional(Type.Number()),
   milestone: Type.Optional(Type.String()),
   hotfix: Type.Optional(Type.Boolean()),
   forceStage: Type.Optional(Type.String()),
   waitForCompletion: Type.Optional(Type.Boolean()),
+  detach: Type.Optional(Type.Boolean({ default: true })),
+  since: Type.Optional(Type.String()),
 });
 
 type PipelineRunParams = Static<typeof PipelineRunParameters>;
 
-export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfig) {
+export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfig): void {
   api.registerTool({
     name: "pipeline_run",
     label: "Pipeline Run",
@@ -36,7 +39,7 @@ export function registerPipelineTool(api: OpenClawPluginApi, config: PluginConfi
     parameters: PipelineRunParameters,
     async execute(_id: string, params: PipelineRunParams) {
       // Resolve a concrete repo path from explicit param, env, or CWD
-      const providedRepoPath = (params as any).repoPath as string | undefined;
+      const providedRepoPath = params.repoPath as string | undefined;
       const repoPath = providedRepoPath ?? process.env.RAILCLAW_REPO_PATH ?? process.cwd();
       // Validate repoPath if provided or when enforcing env defaults
       if (typeof providedRepoPath === "string" || !process.env.RAILCLAW_REPO_PATH) {

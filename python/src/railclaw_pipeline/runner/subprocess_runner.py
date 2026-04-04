@@ -4,11 +4,11 @@ All subprocess calls use shell=False with list arguments only.
 """
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+import contextlib
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 
 class SubprocessError(Exception):
@@ -22,6 +22,7 @@ class SubprocessError(Exception):
 
 class AgentVerdict(StrEnum):
     """Standardized verdict from agent execution."""
+
     PASS = "pass"
     REVISION = "revision"
     NEEDS_HUMAN = "needs-human"
@@ -32,6 +33,7 @@ class AgentVerdict(StrEnum):
 @dataclass
 class SubprocessResult:
     """Result from a subprocess execution."""
+
     stdout: str = ""
     stderr: str = ""
     returncode: int = -1
@@ -55,16 +57,15 @@ def parse_verdict(stdout: str, stderr: str = "", returncode: int = 0) -> AgentVe
             line = line.strip()
             if line.startswith("status:"):
                 status = line.split(":", 1)[1].strip()
-                if status == "success":
-                    return AgentVerdict.PASS
-                elif status == "failure":
-                    return AgentVerdict.REVISION
-                elif status == "needs-human":
-                    return AgentVerdict.NEEDS_HUMAN
-                elif status == "timeout":
-                    return AgentVerdict.TIMEOUT
-                elif status == "error":
-                    return AgentVerdict.ERROR
+                status_to_verdict = {
+                    "success": AgentVerdict.PASS,
+                    "failure": AgentVerdict.REVISION,
+                    "needs-human": AgentVerdict.NEEDS_HUMAN,
+                    "timeout": AgentVerdict.TIMEOUT,
+                    "error": AgentVerdict.ERROR,
+                }
+                if status in status_to_verdict:
+                    return status_to_verdict[status]
 
     # Fallback: keyword detection
     lower = stdout.lower()
@@ -105,10 +106,11 @@ async def run_subprocess(
     if not command:
         raise SubprocessError("Empty command")
 
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     proc_env = None
     if env:
         import os
+
         proc_env = {**os.environ, **env}
 
     try:
@@ -121,16 +123,14 @@ async def run_subprocess(
             env=proc_env,
         )
     except (OSError, FileNotFoundError) as exc:
-        raise SubprocessError(
-            f"Failed to start process: {command[0]!r}: {exc}"
-        ) from exc
+        raise SubprocessError(f"Failed to start process: {command[0]!r}: {exc}") from exc
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(input=input_text.encode() if input_text else None),
             timeout=timeout,
         )
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+        elapsed = (datetime.now(UTC) - start).total_seconds()
         stdout_str = stdout_bytes.decode("utf-8", errors="replace")
         stderr_str = stderr_bytes.decode("utf-8", errors="replace")
 
@@ -150,18 +150,16 @@ async def run_subprocess(
 
         return result
 
-    except asyncio.TimeoutError:
-        try:
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
             proc.kill()
-        except ProcessLookupError:
-            pass
         await proc.wait()
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+        elapsed = (datetime.now(UTC) - start).total_seconds()
 
         raise SubprocessError(
             f"Process timed out after {timeout}s: {command[0]!r}",
             returncode=-1,
-        )
+        ) from None
 
 
 async def run_subprocess_safe(

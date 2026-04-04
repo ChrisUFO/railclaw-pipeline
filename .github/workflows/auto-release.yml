@@ -1,0 +1,86 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get latest tag
+        id: tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Current tag: $TAG"
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          VERSION=${TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          PR_NUMBER=$(gh pr list --state merged --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
+          LABELS=""
+          if [ -n "$PR_NUMBER" ]; then
+            LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+          fi
+
+          if echo "$LABELS" | grep -q "major"; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$LABELS" | grep -q "minor"; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            PATCH=$((PATCH + 1))
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "new_version=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
+          echo "Next release: $NEW_TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update package.json version
+        run: |
+          npm version ${{ steps.bump.outputs.new_version }} --no-git-tag-version --allow-same-version
+
+      - name: Update pyproject.toml version
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.bump.outputs.new_version }}\"/" python/pyproject.toml
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json python/pyproject.toml
+          git diff --cached --quiet || git commit -m "bump: ${{ steps.bump.outputs.new_tag }}"
+
+      - name: Create tag and release
+        run: |
+          git tag ${{ steps.bump.outputs.new_tag }}
+          git push
+          git push origin ${{ steps.bump.outputs.new_tag }}
+          gh release create ${{ steps.bump.outputs.new_tag }} \
+            --title "${{ steps.bump.outputs.new_tag }}" \
+            --generate-notes \
+            --target main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

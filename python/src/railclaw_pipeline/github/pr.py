@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,7 @@ from railclaw_pipeline.github.gh import GhClient, GhError
 
 class PrError(Exception):
     """Raised when a PR operation fails."""
+
     pass
 
 
@@ -44,10 +47,14 @@ class PrClient:
             Dict with pr_number, url, etc.
         """
         args: list[str] = [
-            "pr", "create",
-            "--title", title,
-            "--body", body,
-            "--base", base,
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--base",
+            base,
         ]
         if head:
             args.extend(["--head", head])
@@ -68,7 +75,70 @@ class PrClient:
         except GhError as exc:
             raise PrError(f"Failed to create PR: {exc}") from exc
 
-    async def view(self, number: int, json_fields: str = "number,title,state,mergeable,headRefName") -> dict[str, Any]:
+    async def create_with_body_file(
+        self,
+        title: str,
+        body: str,
+        base: str = "main",
+        head: str | None = None,
+        draft: bool = False,
+        labels: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a pull request using --body-file for reliable multi-line body handling.
+
+        Using --body-file ensures GitHub properly parses the PR body for
+        issue auto-linking (Closes #N must be in the first post body).
+        """
+        import tempfile
+
+        args: list[str] = [
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--base",
+            base,
+        ]
+        if head:
+            args.extend(["--head", head])
+        if draft:
+            args.append("--draft")
+        if labels:
+            args.extend(["--label", ",".join(labels)])
+
+        tmp: tempfile._TemporaryFileWrapper[str] | None = None
+        try:
+            tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+                mode="w",
+                suffix=".md",
+                prefix="pr-body-",
+                delete=False,
+                encoding="utf-8",
+            )
+            tmp.write(body)
+            tmp.close()
+            args.extend(["--body-file", tmp.name])
+
+            output = await self.gh._gh(*args, timeout=60)
+            result: dict[str, Any] = {"url": output.strip()}
+            if "/pull/" in output:
+                match = re.search(r"/pull/(\d+)", output)
+                if not match:
+                    raise PrError(f"Failed to extract PR number from URL: {output.strip()}")
+                result["pr_number"] = int(match.group(1))
+            return result
+        except GhError as exc:
+            raise PrError(f"Failed to create PR: {exc}") from exc
+        finally:
+            if tmp is not None:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp.name)
+
+    async def view(
+        self,
+        number: int,
+        json_fields: str = "number,title,state,mergeable,headRefName",
+    ) -> dict[str, Any]:
         """View PR details."""
         try:
             output = await self.gh._gh("pr", "view", str(number), "--json", json_fields, timeout=30)
@@ -90,8 +160,11 @@ class PrClient:
         """Merge a PR. Returns merge commit SHA or URL."""
         try:
             return await self.gh._gh(
-                "pr", "merge", str(number),
-                "--merge", merge_method,
+                "pr",
+                "merge",
+                str(number),
+                "--merge",
+                merge_method,
                 "--delete-branch",
                 timeout=60,
             )
@@ -111,9 +184,16 @@ class PrClient:
     ) -> list[dict[str, Any]]:
         """List PRs."""
         args: list[str] = [
-            "pr", "list", "--state", state, "--base", base,
-            "--limit", str(limit),
-            "--json", "number,title,headRefName,state,mergeable",
+            "pr",
+            "list",
+            "--state",
+            state,
+            "--base",
+            base,
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,headRefName,state,mergeable",
         ]
         if head:
             args.extend(["--head", head])
@@ -127,9 +207,14 @@ class PrClient:
         """Get PR comments."""
         try:
             output = await self.gh._gh(
-                "pr", "view", str(number),
-                "--json", "comments",
-                "--jq", ".comments[] | {author: .author.login, body: .body, createdAt: .createdAt, path: .path, line: .line}",
+                "pr",
+                "view",
+                str(number),
+                "--json",
+                "comments",
+                "--jq",
+                ".comments[] | {author: .author.login, body: .body, "
+                "createdAt: .createdAt, path: .path, line: .line}",
                 timeout=30,
             )
             if not output.strip():
@@ -142,9 +227,14 @@ class PrClient:
         """Get PR reviews."""
         try:
             output = await self.gh._gh(
-                "pr", "view", str(number),
-                "--json", "reviews",
-                "--jq", '.reviews[] | {author: .author.login, state: .state, body: .body, submittedAt: .submittedAt}',
+                "pr",
+                "view",
+                str(number),
+                "--json",
+                "reviews",
+                "--jq",
+                ".reviews[] | {author: .author.login, state: .state, "
+                "body: .body, submittedAt: .submittedAt}",
                 timeout=30,
             )
             if not output.strip():

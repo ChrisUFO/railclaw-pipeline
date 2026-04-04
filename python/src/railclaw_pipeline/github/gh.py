@@ -8,6 +8,7 @@ from railclaw_pipeline.runner.subprocess_runner import SubprocessError, run_subp
 
 class GhError(Exception):
     """Raised when a gh CLI command fails."""
+
     pass
 
 
@@ -41,8 +42,15 @@ class GhClient:
 
     async def issue_view(self, number: int) -> dict[str, Any]:
         """Get issue details as JSON."""
-        output = await self._gh("issue", "view", str(number), "--json", "title,body,labels,assignees,state")
+        output = await self._gh(
+            "issue",
+            "view",
+            str(number),
+            "--json",
+            "title,body,labels,assignees,state",
+        )
         import json
+
         return json.loads(output)
 
     async def issue_list(
@@ -53,13 +61,23 @@ class GhClient:
         limit: int = 30,
     ) -> list[dict[str, Any]]:
         """List issues matching criteria."""
-        args: list[str] = ["issue", "list", "--state", state, "--limit", str(limit), "--json", "number,title,body,labels"]
+        args: list[str] = [
+            "issue",
+            "list",
+            "--state",
+            state,
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,body,labels",
+        ]
         if milestone:
             args.extend(["--milestone", milestone])
         if label:
             args.extend(["--label", label])
         output = await self._gh(*args, timeout=self.timeout * 2)
         import json
+
         return json.loads(output)
 
     async def issue_create(
@@ -73,6 +91,7 @@ class GhClient:
             args.extend(["--assignee", assignee])
         output = await self._gh(*args, timeout=30)
         import json
+
         return json.loads(output) if output.startswith("{") else {"url": output.strip()}
 
     async def issue_comment(self, number: int, body: str) -> str:

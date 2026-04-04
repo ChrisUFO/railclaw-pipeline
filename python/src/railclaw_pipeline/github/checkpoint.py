@@ -1,9 +1,9 @@
 """CHECKPOINT.md helpers — create, read, sign-off, archive."""
 
+import contextlib
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 
 class CheckpointError(Exception):
@@ -36,8 +36,8 @@ def write_checkpoint(factory_path: Path, content: str) -> None:
     path = get_checkpoint_path(factory_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    import tempfile
     import os
+    import tempfile
     fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp", prefix="checkpoint_")
     try:
         os.write(fd, content.encode("utf-8"))
@@ -45,10 +45,8 @@ def write_checkpoint(factory_path: Path, content: str) -> None:
         os.close(fd)
         os.replace(tmp_path, str(path))
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 
@@ -69,7 +67,7 @@ def update_checkpoint(
     - **Updated:** ISO timestamp
     - **Notes:** ...
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     issue_line = f"- **Issue:** #{issue_number}" if issue_number else "- **Issue:** N/A"
     notes_line = f"- **Notes:** {notes}" if notes else ""
 
@@ -87,7 +85,7 @@ def update_checkpoint(
 def sign_off_checkpoint(factory_path: Path, sign_off: str) -> None:
     """Append a sign-off line to the current checkpoint."""
     existing = read_checkpoint(factory_path)
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     sign_line = f"\n---\n✅ Signed off by {sign_off} at {timestamp}\n"
     write_checkpoint(factory_path, existing + sign_line)
 
@@ -103,7 +101,7 @@ def archive_checkpoint(factory_path: Path, issue_number: int) -> Path:
 
     archive_path = factory_path / ARCHIVE_DIR
     archive_path.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     dest = archive_path / f"checkpoint-issue-{issue_number}-{timestamp}.md"
     dest.write_text(content, encoding="utf-8")
 

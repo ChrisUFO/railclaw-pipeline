@@ -2,8 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -94,7 +93,7 @@ async def run_deploy(
     emitter.emit("deploy_success", issue=state.issue_number)
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

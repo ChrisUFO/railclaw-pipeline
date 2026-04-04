@@ -1,11 +1,11 @@
 """Stage 8: Approval gate — wait for human approval via file protocol."""
 
 import asyncio
+import contextlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -52,7 +52,7 @@ async def run_approval(
         "cycle1_round": state.cycle.cycle1_round,
         "cycle2_round": state.cycle.cycle2_round,
         "summary": summary,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     awaiting_path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +60,7 @@ async def run_approval(
 
     state.status = PipelineStatus.PAUSED
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
 
     emitter.emit("awaiting_approval", issue=state.issue_number, pr=pr_number, summary=summary)
@@ -72,19 +72,29 @@ async def run_approval(
 
     if decision == "approved":
         state.status = PipelineStatus.RUNNING
-        emitter.emit("approval_received", issue=state.issue_number, pr=pr_number, decision="approved")
+        emitter.emit(
+            "approval_received",
+            issue=state.issue_number,
+            pr=pr_number,
+            decision="approved",
+        )
     elif decision == "aborted":
         state.status = PipelineStatus.FAILED
         state.error = {"category": "approval_aborted", "message": "Pipeline aborted by user"}
-        emitter.emit("approval_received", issue=state.issue_number, pr=pr_number, decision="aborted")
+        emitter.emit(
+            "approval_received", issue=state.issue_number, pr=pr_number, decision="aborted"
+        )
     else:
         state.status = PipelineStatus.FAILED
-        state.error = {"category": "approval_timeout", "message": f"Approval timed out after {timeout}s"}
+        state.error = {
+            "category": "approval_timeout",
+            "message": f"Approval timed out after {timeout}s",
+        }
         emitter.emit("approval_timeout", issue=state.issue_number, pr=pr_number)
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
-        state.timestamps.stage_entered = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
+        state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -101,17 +111,13 @@ async def _poll_for_decision(
     elapsed = 0.0
     while elapsed < timeout:
         if approve_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 approve_path.unlink()
-            except OSError:
-                pass
             return "approved"
 
         if abort_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 abort_path.unlink()
-            except OSError:
-                pass
             return "aborted"
 
         await asyncio.sleep(APPROVAL_POLL_INTERVAL)
@@ -152,8 +158,6 @@ def _atomic_write(path: Path, data: str) -> None:
         os.close(fd)
         os.replace(tmp_path, str(path))
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
