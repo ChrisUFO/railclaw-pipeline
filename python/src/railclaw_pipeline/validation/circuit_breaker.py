@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import tempfile
 import time
@@ -16,6 +17,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from railclaw_pipeline.utils.atomic_write import atomic_write
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_THRESHOLD = 2
 
@@ -118,21 +123,5 @@ class CircuitBreaker:
     def _save(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         content = json.dumps(self._state.to_dict(), indent=2)
-        try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self.state_path.parent),
-                suffix=".tmp",
-                prefix="cb_",
-            )
-            try:
-                with os.fdopen(fd, "w") as tmp_file:
-                    tmp_file.write(content)
-                    tmp_file.flush()
-                    os.fsync(tmp_file.fileno())
-                os.replace(tmp_path, str(self.state_path))
-            except BaseException:
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp_path)
-                raise
-        except OSError:
-            pass
+        if not atomic_write(self.state_path, content):
+            logger.warning("Failed to persist circuit breaker state to %s", self.state_path)

@@ -103,7 +103,6 @@ def _run_pipeline_child(
     from railclaw_pipeline.config import PipelineConfig
     from railclaw_pipeline.events.emitter import EventEmitter
     from railclaw_pipeline.pipeline import run_pipeline
-    from railclaw_pipeline.state.lock import StateLock
 
     if hasattr(signal_lib, "SIGTERM"):
 
@@ -122,8 +121,10 @@ def _run_pipeline_child(
 
     state = load_state(state_path)
 
-    # Pre-flight validation in child process (detached mode)
-    # Skip if resuming from a stage past Stage 0 (already validated)
+    # Pre-flight validation in child process (detached mode) — defense in depth.
+    # The parent process also runs preflight before forking, but this ensures
+    # validation even if the parent was bypassed or started with --skip-preflight.
+    # Only runs on fresh starts (stage0_preflight); resumed runs skip this.
     if state.stage.value == "stage0_preflight":
         from railclaw_pipeline.validation.preflight import PreflightGate
 
@@ -389,26 +390,14 @@ def run(
             )
             return
 
-    lock = StateLock(pid_path.parent / "pipeline.lock", max_age=14400)
-    try:
-        lock.acquire(force=True)
-    except StateLockError as exc:
-        output_result({"ok": False, "action": "run", "error": str(exc)})
-        return
-
     now = datetime.now(UTC)
     state = PipelineState(
         issue_number=issue or 0,
         milestone_mode=milestone is not None,
         milestone_label=milestone,
-        stage=PipelineStage.STAGE0_PREFLIGHT if not force_stage else PipelineStage(force_stage),
+        stage=PipelineStage(force_stage) if force_stage else PipelineStage.STAGE0_PREFLIGHT,
         status=PipelineStatus.RUNNING,
-        timestamps=Timestamps(
-            started=now,
-            stage_entered=now,
-            last_updated=now,
-        ),
-        cycle=CycleState(),
+        timestamps=Timestamps(started=now, stage_entered=now, last_updated=now),
     )
 
     save_state(state, state_path)
@@ -426,6 +415,14 @@ def run(
                 "factoryPath": effective_factory,
             }
         )
+
+        lock = StateLock(pid_path.parent / "pipeline.lock", max_age=config.lock_max_age)
+        try:
+            lock.acquire(force=True)
+        except StateLockError as exc:
+            output_result({"ok": False, "action": "run", "error": str(exc)})
+            return
+
         run_dir = _build_run_dir(effective_factory, issue)
         emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
@@ -444,6 +441,8 @@ def run(
             save_state(state, state_path)
         finally:
             emitter.close()
+            if lock:
+                lock.release()
 
         output_result(
             {

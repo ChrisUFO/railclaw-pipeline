@@ -3,13 +3,13 @@
 import contextlib
 import json
 import os
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from railclaw_pipeline.state.pid import is_pid_alive
+from railclaw_pipeline.utils.atomic_write import atomic_write
 
 DEFAULT_LOCK_MAX_AGE = 14400
 
@@ -129,15 +129,29 @@ class StateLock:
         """Attempt to acquire the lock atomically.
 
         Returns True if lock was acquired, False if already held.
+        Uses post-write PID verification to prevent race conditions
+        where two processes both think they hold the lock.
         """
         if not self.lock_path.exists():
             content = self._build_lock_content(agent, stage, run_id)
-            return self._atomic_write(content)
+            if self._atomic_write(content):
+                # Post-write verification: confirm our PID is in the lock file
+                info = self._read_lock_info()
+                if info and info.pid == os.getpid():
+                    return True
+                # Another process overwrote us — undo and fail
+                self._remove_lock_file()
+                return False
 
         info = self._read_lock_info()
         if info is None or not is_pid_alive(info.pid):
             content = self._build_lock_content(agent, stage, run_id)
-            return self._atomic_write(content)
+            if self._atomic_write(content):
+                info = self._read_lock_info()
+                if info and info.pid == os.getpid():
+                    return True
+                self._remove_lock_file()
+                return False
 
         return False
 
@@ -187,29 +201,8 @@ class StateLock:
         return json.dumps(data, indent=2)
 
     def _atomic_write(self, content: str) -> bool:
-        """Write lock file atomically using tempfile + os.replace.
-
-        Returns True if write succeeded, False if file appeared between check and write.
-        """
-        try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=str(self.lock_path.parent),
-                suffix=".tmp",
-                prefix="lock_",
-            )
-            try:
-                with os.fdopen(fd, "w") as tmp_file:
-                    tmp_file.write(content)
-                    tmp_file.flush()
-                    os.fsync(tmp_file.fileno())
-                os.replace(tmp_path, str(self.lock_path))
-                return True
-            except BaseException:
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp_path)
-                raise
-        except OSError:
-            return False
+        """Write lock file atomically using shared utility."""
+        return atomic_write(self.lock_path, content)
 
     def _remove_lock_file(self) -> None:
         """Remove the lock file."""

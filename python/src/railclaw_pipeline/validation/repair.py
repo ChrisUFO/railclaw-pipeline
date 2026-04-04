@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from railclaw_pipeline.state.lock import StateLock
-from railclaw_pipeline.state.pid import is_pid_alive
+from railclaw_pipeline.state.pid import is_pid_alive, kill_pid
 
 
 class IssueSeverity(str, Enum):
@@ -120,6 +120,14 @@ class RepairEngine:
                 )
         return result
 
+    _FIX_ACTIONS: dict[str, str] = {
+        "stale_lock": "_fix_stale_lock",
+        "orphaned_branch": "_fix_orphaned_branch",
+        "uncommitted_changes": "_fix_uncommitted_changes",
+        "corrupt_state": "_fix_corrupt_state",
+        "dangling_process": "_fix_dangling_process",
+    }
+
     async def repair(self, force: bool = False) -> RepairResult:
         """Scan and auto-fix all safe issues. With force=True, fix dangerous ones too."""
         result = await self.scan()
@@ -136,15 +144,19 @@ class RepairEngine:
                 continue
 
             try:
-                fix_method = getattr(self, f"_fix_{issue.fix_action}", None)
-                if fix_method:
-                    # Pass detail as argument for fix methods that need it
-                    if issue.detail:
-                        await fix_method(issue.detail)
-                    else:
-                        await fix_method()
-                    result.fixed.append(f"[{issue.category}] {issue.description}")
-                    result.issues.remove(issue)
+                method_name = self._FIX_ACTIONS.get(issue.fix_action)
+                if method_name is None:
+                    result.unfixable.append(
+                        f"[{issue.category}] Unknown fix action: {issue.fix_action}"
+                    )
+                    continue
+                fix_method = getattr(self, method_name)
+                if issue.detail:
+                    await fix_method(issue.detail)
+                else:
+                    await fix_method()
+                result.fixed.append(f"[{issue.category}] {issue.description}")
+                result.issues.remove(issue)
             except Exception as exc:
                 result.unfixable.append(f"[{issue.category}] Fix failed: {exc}")
 
@@ -414,7 +426,18 @@ class RepairEngine:
                 )
                 stdout, _ = await proc.communicate()
                 if proc.returncode == 0 and stdout.strip():
-                    pass
+                    output = stdout.decode().strip()
+                    # CSV format: "image name","PID","session","session#","mem usage"
+                    if f'"{pid}"' in output:
+                        issues.append(
+                            RepairIssue(
+                                severity=IssueSeverity.CRITICAL,
+                                category="dangling_process",
+                                description=f"Pipeline process PID {pid} is still running on Windows.",
+                                fixable=True,
+                                fix_action="dangling_process",
+                            )
+                        )
             except (OSError, FileNotFoundError):
                 pass
         else:
@@ -458,7 +481,7 @@ class RepairEngine:
     async def _fix_orphaned_branch(self, branch: str) -> None:
         """Delete an orphaned branch locally."""
         try:
-            await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 "git",
                 "-C",
                 str(self.repo_path),
@@ -468,6 +491,7 @@ class RepairEngine:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+            await proc.wait()
         except (OSError, FileNotFoundError):
             pass
 
@@ -500,7 +524,7 @@ class RepairEngine:
             pass
 
     async def _fix_dangling_process(self) -> None:
-        """Kill the dangling pipeline process."""
+        """Kill the dangling pipeline process with SIGTERM→SIGKILL cascade."""
         pid_path = self.state_dir / "pipeline.pid"
         try:
             content = pid_path.read_text().strip()
@@ -508,16 +532,4 @@ class RepairEngine:
         except (ValueError, OSError):
             return
 
-        import signal
-
-        try:
-            if sys.platform == "win32":
-                subprocess.run(
-                    ["taskkill", "/PID", str(pid), "/F", "/T"],
-                    capture_output=True,
-                    timeout=10,
-                )
-            else:
-                os.kill(pid, signal.SIGTERM)
-        except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        kill_pid(pid)

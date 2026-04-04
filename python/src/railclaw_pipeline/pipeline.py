@@ -95,6 +95,35 @@ def _should_skip_stage(current_stage: str, resume_from: str) -> bool:
         return False
 
 
+def _check_circuit_breaker(
+    circuit_breaker: Any,
+    agent: str,
+    issue_number: int,
+    emitter: Any,
+) -> bool:
+    """Check if circuit breaker is open for the given agent.
+
+    Returns True if the circuit is open (should skip this agent's stage).
+    Emits an escalation event when the circuit is open.
+    """
+    if circuit_breaker and circuit_breaker.is_open(agent):
+        emitter.emit(
+            "escalation",
+            issue=issue_number,
+            payload={
+                "type": "circuit_breaker_open",
+                "agent": agent,
+                "message": (
+                    f"Circuit breaker open for {agent} agent "
+                    f"({circuit_breaker.get_consecutive_timeouts(agent)} consecutive timeouts). "
+                    f"Skipping and escalating."
+                ),
+            },
+        )
+        return True
+    return False
+
+
 async def run_stage(
     name: str,
     handler: Callable[..., Awaitable[PipelineState]],
@@ -385,9 +414,7 @@ async def run_pipeline(
             },
         )
     except TimeoutError:
-        state.status = PipelineStatus.FAILED
-        state.error = {"category": "timeout", "message": f"Stage {state.stage.value} timed out"}
-        save_state(state, config.state_path)
+        _cleanup_on_timeout(state.stage.value)
         emitter.emit(
             "fatal_error",
             issue=state.issue_number,
@@ -438,16 +465,7 @@ async def _run_cycle1_fix_loop(
         save_state(state, config.state_path)
 
         # Check circuit breaker before scope review
-        if circuit_breaker and circuit_breaker.is_open("scope"):
-            emitter.emit(
-                "escalation",
-                issue=state.issue_number,
-                payload={
-                    "type": "circuit_breaker_open",
-                    "agent": "scope",
-                    "message": f"Circuit breaker open for scope agent ({circuit_breaker.get_consecutive_timeouts('scope')} consecutive timeouts). Skipping review.",
-                },
-            )
+        if _check_circuit_breaker(circuit_breaker, "scope", state.issue_number, emitter):
             break
 
         state = await run_stage(
@@ -465,16 +483,7 @@ async def _run_cycle1_fix_loop(
             break
 
         # Check circuit breaker before wrench fix
-        if circuit_breaker and circuit_breaker.is_open("wrench"):
-            emitter.emit(
-                "escalation",
-                issue=state.issue_number,
-                payload={
-                    "type": "circuit_breaker_open",
-                    "agent": "wrench",
-                    "message": f"Circuit breaker open for wrench agent ({circuit_breaker.get_consecutive_timeouts('wrench')} consecutive timeouts). Escalating.",
-                },
-            )
+        if _check_circuit_breaker(circuit_breaker, "wrench", state.issue_number, emitter):
             break
 
         if rnd == 4:
@@ -517,16 +526,7 @@ async def _run_cycle2_gemini(
     stall = 0
     while not state.cycle.gemini_clean and state.cycle.cycle2_round < cycle2_cap:
         # Check circuit breaker before each iteration
-        if circuit_breaker and circuit_breaker.is_open("scope"):
-            emitter.emit(
-                "escalation",
-                issue=state.issue_number,
-                payload={
-                    "type": "circuit_breaker_open",
-                    "agent": "scope",
-                    "message": f"Circuit breaker open for scope agent ({circuit_breaker.get_consecutive_timeouts('scope')} consecutive timeouts). Escalating.",
-                },
-            )
+        if _check_circuit_breaker(circuit_breaker, "scope", state.issue_number, emitter):
             break
 
         state = await run_stage(
