@@ -547,5 +547,12 @@ def _internal_run(
     )
 
 
+@main.command(hidden=True)
+@click.option("--pid", "pid_num", type=int, required=True)
+def _pid_check(pid_num: int) -> None:
+    alive = is_pid_alive(pid_num)
+    output_result({"alive": alive})
+
+
 if __name__ == "__main__":
     main()

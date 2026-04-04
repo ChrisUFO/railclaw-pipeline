@@ -12,12 +12,13 @@ export interface PythonBridgeResult {
   branch?: string;
   message?: string;
   statePath?: string;
+  pid?: number;
   error?: string | null;
 }
 
 export function spawnPythonBridge(
   config: PluginConfig,
-  params: PipelineRunParams
+  params: PipelineRunParams,
 ): Promise<PythonBridgeResult> {
   return new Promise((resolve) => {
     const args: string[] = [params.action];
@@ -38,6 +39,15 @@ export function spawnPythonBridge(
       args.push("--force-stage", params.forceStage);
     }
 
+    const detach = params.action === "run" && params.detach !== false;
+    if (detach && (params.action === "run" || params.action === "resume")) {
+      args.push("--detach");
+    }
+
+    if (params.since !== undefined) {
+      args.push("--since", params.since);
+    }
+
     const proc = spawn(config.pythonCommand, args, {
       cwd: config.repoPath,
       env: {
@@ -51,9 +61,29 @@ export function spawnPythonBridge(
 
     let stdout = "";
     let stderr = "";
+    let resolved = false;
 
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
+
+      if (detach && !resolved) {
+        const lines = stdout.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const parsed = JSON.parse(trimmed) as PythonBridgeResult;
+            if (parsed.ok && parsed.status === "started") {
+              resolved = true;
+              updateStore(parsed);
+              resolve(parsed);
+              return;
+            }
+          } catch {
+            // not a complete JSON line yet, keep accumulating
+          }
+        }
+      }
     });
 
     proc.stderr.on("data", (data) => {
@@ -61,6 +91,8 @@ export function spawnPythonBridge(
     });
 
     proc.on("close", (code) => {
+      if (resolved) return;
+
       if (code !== 0) {
         resolve({
           ok: false,
@@ -72,24 +104,7 @@ export function spawnPythonBridge(
 
       try {
         const result = JSON.parse(stdout.trim()) as PythonBridgeResult;
-
-        if (result.ok && result.issueNumber && result.stage) {
-          try {
-            const map = pipelineStore.tryGetRuntime() ?? {};
-            map[`run:${result.issueNumber}`] = {
-              issueNumber: result.issueNumber,
-              stage: result.stage,
-              status: result.status ?? "running",
-              startedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              statePath: result.statePath ?? "",
-            };
-            pipelineStore.setRuntime(map);
-          } catch {
-            // Store is advisory — failures are non-critical
-          }
-        }
-
+        updateStore(result);
         resolve(result);
       } catch (error) {
         resolve({
@@ -101,6 +116,7 @@ export function spawnPythonBridge(
     });
 
     proc.on("error", (error) => {
+      if (resolved) return;
       resolve({
         ok: false,
         action: params.action,
@@ -108,4 +124,24 @@ export function spawnPythonBridge(
       });
     });
   });
+}
+
+function updateStore(result: PythonBridgeResult): void {
+  if (result.ok && result.issueNumber && result.stage) {
+    try {
+      const map = pipelineStore.tryGetRuntime() ?? {};
+      map[`run:${result.issueNumber}`] = {
+        issueNumber: result.issueNumber,
+        stage: result.stage,
+        status: result.status ?? "running",
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statePath: result.statePath ?? "",
+        pid: result.pid,
+      };
+      pipelineStore.setRuntime(map);
+    } catch {
+      // Store is advisory — failures are non-critical
+    }
+  }
 }
