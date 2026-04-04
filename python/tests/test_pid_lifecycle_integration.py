@@ -8,6 +8,12 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Integration tests spawn console subprocesses that flash on Windows; "
+    "covered by unit tests on this platform",
+)
+
 
 @pytest.fixture
 def temp_factory_env(tmp_path):

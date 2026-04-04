@@ -209,8 +209,12 @@ def _detach_subprocess(
         cmd.append("--hotfix")
 
     creationflags = 0
+    startupinfo = None
     if sys.platform == "win32":
         creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
 
     proc = subprocess.Popen(
         cmd,
@@ -218,6 +222,7 @@ def _detach_subprocess(
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
         creationflags=creationflags,
+        startupinfo=startupinfo,
     )
 
     write_pid(pid_path, proc.pid)
