@@ -72,7 +72,10 @@ def query_notifications(
                         )
                     if ts_aware < cutoff:
                         continue
-                all_entries.append(NotificationPayload(**data))
+                valid_fields = {
+                    k: v for k, v in data.items() if k in NotificationPayload.__dataclass_fields__
+                }
+                all_entries.append(NotificationPayload(**valid_fields))
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 logger.warning("Skipping malformed notification line: %s", exc)
                 continue

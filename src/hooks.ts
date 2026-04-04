@@ -3,7 +3,16 @@ import { spawn } from "child_process";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import type { PluginConfig } from "./config.js";
 
-function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
+function isProcessAlivePosix(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isProcessAliveWindows(pythonCommand: string, pid: number): Promise<boolean> {
   return new Promise((resolve) => {
     const TIMEOUT_MS = 5000;
     let timedOut = false;
@@ -42,6 +51,13 @@ function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
       resolve(false);
     });
   });
+}
+
+function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
+  if (process.platform !== "win32") {
+    return Promise.resolve(isProcessAlivePosix(pid));
+  }
+  return isProcessAliveWindows(pythonCommand, pid);
 }
 
 export function registerLifecycleHooks(api: OpenClawPluginApi, config: PluginConfig): void {

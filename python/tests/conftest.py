@@ -2,20 +2,21 @@ import subprocess
 import sys
 
 if sys.platform == "win32":
-    _original_run = subprocess.run
-    _original_popen = subprocess.Popen
+    _STARTF_USESHOWWINDOW = 1
+    _SW_HIDE = 0
 
-    _NO_WINDOW = subprocess.CREATE_NO_WINDOW
+    class _QuietPopen(subprocess.Popen):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("creationflags", 0)
+            kwargs["creationflags"] |= subprocess.CREATE_NO_WINDOW
 
-    def _quiet_run(*args, **kwargs):
-        kwargs.setdefault("creationflags", 0)
-        kwargs["creationflags"] |= _NO_WINDOW
-        return _original_run(*args, **kwargs)
+            si = kwargs.get("startupinfo")
+            if si is None:
+                si = subprocess.STARTUPINFO()
+                kwargs["startupinfo"] = si
+            si.dwFlags |= _STARTF_USESHOWWINDOW
+            si.wShowWindow = _SW_HIDE
 
-    def _quiet_popen(*args, **kwargs):
-        kwargs.setdefault("creationflags", 0)
-        kwargs["creationflags"] |= _NO_WINDOW
-        return _original_popen(*args, **kwargs)
+            super().__init__(*args, **kwargs)
 
-    subprocess.run = _quiet_run
-    subprocess.Popen = _quiet_popen
+    subprocess.Popen = _QuietPopen

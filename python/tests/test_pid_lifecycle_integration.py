@@ -32,13 +32,14 @@ def temp_factory_env(tmp_path):
     os.environ["GIT_COMMITTER_NAME"] = "Test User"
     os.environ["GIT_COMMITTER_EMAIL"] = "test@test.com"
 
+    cf = "creationflags=0x08000000, " if sys.platform == "win32" else ""
     git_script = (
         f"import os; os.chdir(r'{repo}'); "
         f"import subprocess; "
-        f"subprocess.run(['git', 'init', '-b', 'main'], capture_output=True); "
-        f"subprocess.run(['git', 'config', 'user.name', 'Test User'], capture_output=True); "
-        f"subprocess.run(['git', 'config', 'user.email', 'test@test.com'], capture_output=True); "
-        f"subprocess.run(['git', 'commit', '--allow-empty', '-m', 'initial'], capture_output=True)"
+        f"subprocess.run(['git', 'init', '-b', 'main'], capture_output=True, {cf}); "
+        f"subprocess.run(['git', 'config', 'user.name', 'Test User'], capture_output=True, {cf}); "
+        f"subprocess.run(['git', 'config', 'user.email', 'test@test.com'], capture_output=True, {cf}); "
+        f"subprocess.run(['git', 'commit', '--allow-empty', '-m', 'initial'], capture_output=True, {cf})"
     )
     subprocess.run([sys.executable, "-c", git_script], capture_output=True)
 
