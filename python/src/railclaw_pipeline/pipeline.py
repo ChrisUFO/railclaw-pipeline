@@ -102,6 +102,8 @@ async def run_stage(
     config: PipelineConfig,
     emitter: EventEmitter,
     *args: Any,
+    circuit_breaker: Any = None,
+    agent_name: str | None = None,
 ) -> PipelineState:
     """Execute a pipeline stage with timeout, event emission, and state persistence."""
     start = time.monotonic()
@@ -131,11 +133,11 @@ async def run_stage(
     except TimeoutError:
         duration = time.monotonic() - start
         emitter.emit(
-            "stage_end",
+            "stage_timeout",
             issue=state.issue_number,
             stage=name,
             duration_s=duration,
-            payload={"success": False, "timeout": True},
+            agent=agent_name,
         )
         emitter.emit_notification(
             "stage_end",
@@ -144,6 +146,8 @@ async def run_stage(
             duration_s=duration,
             verdict="timeout",
         )
+        if circuit_breaker and agent_name:
+            circuit_breaker.record_timeout(agent_name)
         raise
     except FatalPipelineError:
         raise
@@ -164,6 +168,9 @@ async def run_stage(
             verdict="error",
         )
         raise
+
+    if circuit_breaker and agent_name:
+        circuit_breaker.record_success(agent_name)
 
     duration = time.monotonic() - start
     emitter.emit(
@@ -220,10 +227,14 @@ async def run_pipeline(
     from railclaw_pipeline.stages.stage10_qa import run_qa
     from railclaw_pipeline.stages.stage11_hotfix import run_hotfix
     from railclaw_pipeline.stages.stage12_lessons import run_lessons
+    from railclaw_pipeline.validation.circuit_breaker import CircuitBreaker
 
     blueprint_config = get_agent_config(config, "blueprint")
     wrench_config = get_agent_config(config, "wrench")
     scope_config = get_agent_config(config, "scope")
+
+    cb_path = config.factory_path / config.state_dir / "circuit_breaker.json"
+    circuit_breaker = CircuitBreaker(cb_path)
 
     resume_from = state.stage.value
 
@@ -255,6 +266,8 @@ async def run_pipeline(
                 config,
                 emitter,
                 AgentRunner(blueprint_config, config.repo_path),
+                circuit_breaker=circuit_breaker,
+                agent_name="blueprint",
             )
         if not _should_skip_stage("stage2_wrench", resume_from):
             state = await run_stage(
@@ -264,6 +277,8 @@ async def run_pipeline(
                 config,
                 emitter,
                 AgentRunner(wrench_config, config.repo_path),
+                circuit_breaker=circuit_breaker,
+                agent_name="wrench",
             )
         if not _should_skip_stage("stage2.5_create_pr", resume_from):
             state = await run_stage("stage2.5_create_pr", run_create_pr, state, config, emitter)
@@ -276,6 +291,8 @@ async def run_pipeline(
                 config,
                 emitter,
                 AgentRunner(scope_config, config.repo_path),
+                circuit_breaker=circuit_breaker,
+                agent_name="scope",
             )
 
         if not _should_skip_stage("stage3.5_audit_fix", resume_from):
@@ -288,15 +305,30 @@ async def run_pipeline(
                     config,
                     emitter,
                     AgentRunner(wrench_config, config.repo_path),
+                    circuit_breaker=circuit_breaker,
+                    agent_name="wrench",
                 )
             else:
                 emitter.emit("audit_clean", issue=state.issue_number, stage="stage3_audit")
 
         if not _should_skip_stage("stage5_fix_loop", resume_from):
-            state = await _run_cycle1_fix_loop(state, config, emitter, wrench_config, scope_config)
+            state = await _run_cycle1_fix_loop(
+                state,
+                config,
+                emitter,
+                wrench_config,
+                scope_config,
+                circuit_breaker,
+            )
 
         if not _should_skip_stage("cycle2_gemini_loop", resume_from):
-            state = await _run_cycle2_gemini(state, config, emitter, scope_config)
+            state = await _run_cycle2_gemini(
+                state,
+                config,
+                emitter,
+                scope_config,
+                circuit_breaker,
+            )
 
         if not _should_skip_stage("stage7_docs", resume_from):
             state = await run_stage("stage7_docs", run_docs, state, config, emitter)
@@ -314,6 +346,8 @@ async def run_pipeline(
                 config,
                 emitter,
                 AgentRunner(get_agent_config(config, "beaker"), config.repo_path),
+                circuit_breaker=circuit_breaker,
+                agent_name="beaker",
             )
 
         state.status = PipelineStatus.COMPLETED
@@ -375,6 +409,7 @@ async def _run_cycle1_fix_loop(
     emitter: EventEmitter,
     wrench_config: Any,
     scope_config: Any,
+    circuit_breaker: Any = None,
 ) -> PipelineState:
     """Run the cycle-1 review/fix loop (up to 5 rounds)."""
     from railclaw_pipeline.stages.stage4_review import run_review
@@ -391,6 +426,8 @@ async def _run_cycle1_fix_loop(
             config,
             emitter,
             AgentRunner(scope_config, config.repo_path),
+            circuit_breaker=circuit_breaker,
+            agent_name="scope",
         )
 
         if state.cycle.scope_verdict == "pass":
@@ -414,6 +451,8 @@ async def _run_cycle1_fix_loop(
             config,
             emitter,
             AgentRunner(wrench_config, config.repo_path),
+            circuit_breaker=circuit_breaker,
+            agent_name="wrench",
         )
 
     return state
@@ -424,6 +463,7 @@ async def _run_cycle2_gemini(
     config: PipelineConfig,
     emitter: EventEmitter,
     scope_config: Any,
+    circuit_breaker: Any = None,
 ) -> PipelineState:
     """Run the cycle-2 Gemini review loop (up to 20 rounds with stall detection)."""
     from railclaw_pipeline.stages.cycle2_gemini import run_gemini_loop

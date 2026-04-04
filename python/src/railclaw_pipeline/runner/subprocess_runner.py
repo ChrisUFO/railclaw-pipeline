@@ -5,6 +5,7 @@ All subprocess calls use shell=False with list arguments only.
 
 import asyncio
 import contextlib
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -151,15 +152,53 @@ async def run_subprocess(
         return result
 
     except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-        await proc.wait()
+        await _kill_process_cascade(proc, timeout=timeout)
         elapsed = (datetime.now(UTC) - start).total_seconds()
 
         raise SubprocessError(
             f"Process timed out after {timeout}s: {command[0]!r}",
             returncode=-1,
         ) from None
+
+
+async def _kill_process_cascade(
+    proc: asyncio.subprocess.Process, timeout: float | None = None
+) -> None:
+    """Kill subprocess with SIGTERM→SIGKILL cascade.
+
+    Sends SIGTERM first, waits up to 10 seconds, then SIGKILL if still alive.
+    On Windows, falls back to taskkill /PID /T /F.
+    """
+    import signal
+    import sys
+
+    pid = proc.pid
+    if pid is None:
+        return
+
+    try:
+        if sys.platform == "win32":
+            proc.kill()
+        else:
+            try:
+                proc.send_signal(signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                return
+
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if proc.returncode is not None:
+                    return
+                await asyncio.sleep(0.2)
+
+            try:
+                proc.kill()
+            except (ProcessLookupError, OSError):
+                return
+
+        await proc.wait()
+    except Exception:
+        pass
 
 
 async def run_subprocess_safe(
