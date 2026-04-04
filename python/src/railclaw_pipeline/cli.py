@@ -291,6 +291,7 @@ def main() -> None:
 @click.option("--hotfix", is_flag=True, help="Run in hotfix mode")
 @click.option("--force-stage", type=str, help="Force start at specific stage")
 @click.option("--detach", is_flag=True, help="Run as background daemon process")
+@click.option("--skip-preflight", is_flag=True, help="Skip pre-flight validation checks")
 def run(
     repo_path: str | None,
     factory_path: str | None,
@@ -300,6 +301,7 @@ def run(
     hotfix: bool,
     force_stage: str | None,
     detach: bool,
+    skip_preflight: bool,
 ) -> None:
     if not issue and not milestone:
         output_result({"ok": False, "action": "run", "error": "issue or milestone is required"})
@@ -332,6 +334,37 @@ def run(
                     remove_pid(pid_path)
         except Exception:
             pass
+
+    if not skip_preflight:
+        from railclaw_pipeline.config import PipelineConfig
+        from railclaw_pipeline.validation.preflight import PreflightGate
+
+        preflight_config = PipelineConfig(
+            {
+                "repoPath": effective_repo,
+                "factoryPath": effective_factory,
+            }
+        )
+        gate = PreflightGate(
+            repo_path=preflight_config.repo_path,
+            factory_path=preflight_config.factory_path,
+            state_path=preflight_config.state_path,
+            lock_path=preflight_config.lock_path,
+            lock_max_age=preflight_config.lock_max_age,
+            disk_space_min_mb=preflight_config.preflight.get("diskSpaceMinMB", 500),
+            agent_commands=preflight_config.preflight.get("agentCommands"),
+        )
+        result = asyncio.run(gate.run())
+        if not result.passed:
+            output_result(
+                {
+                    "ok": False,
+                    "action": "run",
+                    "error": f"Pre-flight checks failed ({result.failure_count} issue(s)).",
+                    "preflight": result.to_dict(),
+                }
+            )
+            return
 
     lock = StateLock(pid_path.parent / "pipeline.lock", max_age=14400)
     try:

@@ -65,6 +65,14 @@ class PipelineConfig:
             },
         )
 
+        self.preflight = config_dict.get(
+            "preflight",
+            {
+                "diskSpaceMinMB": 500,
+                "agentCommands": ["opencode --version", "gemini --version"],
+            },
+        )
+
     def get_agent_timeout(self, agent: str) -> int:
         """Get timeout for specific agent."""
         agent_config = self.agents.get(agent, {})
