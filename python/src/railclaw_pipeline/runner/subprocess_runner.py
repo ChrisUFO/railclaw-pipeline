@@ -178,7 +178,18 @@ async def _kill_process_cascade(
 
     try:
         if sys.platform == "win32":
-            proc.kill()
+            try:
+                await asyncio.create_subprocess_exec(
+                    "taskkill",
+                    "/PID",
+                    str(pid),
+                    "/T",
+                    "/F",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except (OSError, FileNotFoundError):
+                proc.kill()
         else:
             try:
                 proc.send_signal(signal.SIGTERM)

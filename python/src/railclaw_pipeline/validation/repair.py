@@ -195,12 +195,15 @@ class RepairEngine:
             )
             return issues
 
+        # Use lock_max_age as the threshold for "alive but old" locks.
+        # Stages like stage2_wrench can run for 2 hours, so a short threshold
+        # would false-positive healthy runs. Default is 4 hours (14400s).
         try:
             lock_age = time.time() - os.path.getmtime(self.lock_path)
         except OSError:
             lock_age = 0
 
-        if lock_age > 300:
+        if lock_age > self.lock_max_age:
             issues.append(
                 RepairIssue(
                     severity=IssueSeverity.WARNING,
@@ -513,13 +516,14 @@ class RepairEngine:
             pass
 
     async def _fix_corrupt_state(self) -> None:
-        """Archive corrupt state file and create a clean template."""
+        """Archive corrupt state file to corrupt/ directory and remove the original."""
         corrupt_dir = self.state_dir / "corrupt"
         corrupt_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         archive_path = corrupt_dir / f"state-{timestamp}.json.corrupt"
         try:
             shutil.copy2(self.state_path, archive_path)
+            self.state_path.unlink()
         except OSError:
             pass
 
