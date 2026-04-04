@@ -197,22 +197,22 @@ PipelineRunMetadata
 
 | Stage           | Agent            | Description                          | Timeout |
 | --------------- | ---------------- | ------------------------------------ | ------- |
-| 0 — Preflight   | —                | Environment checks                   | 120s    |
-| 1 — Blueprint   | Blueprint        | Planning                             | 600s    |
-| 2 — Wrench      | Wrench           | Implementation                       | 7200s   |
-| 2.5 — PR        | —                | PR creation                          | 60s     |
-| 3 — Audit       | Scope            | Completeness audit                   | 300s    |
-| 3.5 — Audit Fix | Wrench           | Fix audit findings                   | 600s    |
-| 4 — Review      | Scope            | Code review                          | 300s    |
-| 5 — Fix Loop    | Wrench/Wrench Sr | Fix review findings (max 5 rounds)   | 600s    |
-| Cycle 2         | Scope/Gemini     | External review loop (max 20 rounds) | 1200s   |
-| 7 — Docs        | Quill            | Documentation (opt-in)               | 600s    |
-| 8 — Approval    | —                | Human approval gate                  | 86400s  |
-| 8c — Merge      | —                | Squash merge + branch delete         | 120s    |
-| 9 — Deploy      | —                | PM2 restart + health check           | 300s    |
-| 10 — QA         | Beaker           | QA sweep                             | 600s    |
-| 11 — Hotfix     | Scope/Wrench     | Post-hoc hotfix review               | 1800s   |
-| 12 — Lessons    | —                | Lessons learned generation           | 120s    |
+| 0 — Preflight   | —                | Environment checks                   | 2m      |
+| 1 — Blueprint   | Blueprint        | Planning                             | 10m     |
+| 2 — Wrench      | Wrench           | Implementation                       | 2h      |
+| 2.5 — PR        | —                | PR creation                          | 1m      |
+| 3 — Audit       | Scope            | Completeness audit                   | 5m      |
+| 3.5 — Audit Fix | Wrench           | Fix audit findings                   | 10m     |
+| 4 — Review      | Scope            | Code review                          | 5m      |
+| 5 — Fix Loop    | Wrench/Wrench Sr | Fix review findings (max 5 rounds)   | 10m     |
+| Cycle 2         | Scope/Gemini     | External review loop (max 20 rounds) | 20m     |
+| 7 — Docs        | Quill            | Documentation (opt-in)               | 10m     |
+| 8 — Approval    | —                | Human approval gate                  | 24h     |
+| 8c — Merge      | —                | Squash merge + branch delete         | 2m      |
+| 9 — Deploy      | —                | PM2 restart + health check           | 5m      |
+| 10 — QA         | Beaker           | QA sweep                             | 10m     |
+| 11 — Hotfix     | Scope/Wrench     | Post-hoc hotfix review               | 30m     |
+| 12 — Lessons    | —                | Lessons learned generation           | 2m      |
 
 ### Stage Runner Pattern
 

@@ -220,9 +220,7 @@ def _detach_fork(
         state.pid = os.getpid()
         save_state(state, state_path)
     except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).error("Failed to persist PID to state: %s", exc)
+        logger.error("Failed to persist PID to state: %s", exc)
 
     _run_pipeline_child(state_path, pid_path, repo_path, factory_path, hotfix)
 
@@ -357,7 +355,7 @@ def run(
                     state.error = {"message": "Previous pipeline died unexpectedly"}
                     save_state(state, state_path)
                     remove_pid(pid_path)
-        except Exception:
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
 
     if not skip_preflight:
