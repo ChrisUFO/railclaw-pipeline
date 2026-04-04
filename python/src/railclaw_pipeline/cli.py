@@ -127,29 +127,30 @@ def _detach_fork(
 ) -> None:
     child_pid = os.fork()
     if child_pid > 0:
-        write_pid(pid_path, child_pid)
+        os.waitpid(child_pid, 0)
+        os._exit(0)
+
+    os.setsid()
+
+    grandchild_pid = os.fork()
+    if grandchild_pid > 0:
+        write_pid(pid_path, grandchild_pid)
         output_result(
             {
                 "ok": True,
                 "action": "run",
                 "status": "started",
-                "pid": child_pid,
+                "pid": grandchild_pid,
                 "message": "Pipeline started in background",
                 "statePath": str(state_path),
             }
         )
         os._exit(0)
 
-    os.setsid()
-
-    second_pid = os.fork()
-    if second_pid > 0:
-        os._exit(0)
-
-    sys.stdin.close()
-    devnull = os.open(os.devnull, os.O_RDWR)
-    os.dup2(devnull, sys.stdin.fileno() if sys.stdin else devnull)
-    os.close(devnull)
+    devnull_fd = os.open(os.devnull, os.O_RDWR)
+    for fd in (0, 1, 2):
+        os.dup2(devnull_fd, fd)
+    os.close(devnull_fd)
 
     write_pid(pid_path, os.getpid())
 

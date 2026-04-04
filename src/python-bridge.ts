@@ -130,14 +130,16 @@ function updateStore(result: PythonBridgeResult): void {
   if (result.ok && result.issueNumber && result.stage) {
     try {
       const map = pipelineStore.tryGetRuntime() ?? {};
-      map[`run:${result.issueNumber}`] = {
+      const key = `run:${result.issueNumber}`;
+      const existing = map[key];
+      map[key] = {
         issueNumber: result.issueNumber,
         stage: result.stage,
         status: result.status ?? "running",
-        startedAt: new Date().toISOString(),
+        startedAt: existing?.startedAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        statePath: result.statePath ?? "",
-        pid: result.pid,
+        statePath: result.statePath ?? existing?.statePath ?? "",
+        pid: result.pid ?? existing?.pid,
       };
       pipelineStore.setRuntime(map);
     } catch {
