@@ -3,9 +3,9 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -81,10 +81,16 @@ async def run_stage(
     state.stage = PipelineStage(name)
     state.status = PipelineStatus.RUNNING
     if state.timestamps:
-        state.timestamps.stage_entered = datetime.now(timezone.utc)
+        state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
 
     emitter.emit("stage_start", issue=state.issue_number, stage=name)
+    emitter.emit_notification(
+        "stage_start",
+        issue=state.issue_number,
+        stage=name,
+        next_stage=name,
+    )
     update_checkpoint(
         config.factory_path, stage=name, status="running", issue_number=state.issue_number
     )
@@ -95,11 +101,21 @@ async def run_stage(
             handler(state, config, emitter, *args),
             timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         duration = time.monotonic() - start
         emitter.emit(
-            "stage_end", issue=state.issue_number, stage=name,
-            duration_s=duration, payload={"success": False, "timeout": True},
+            "stage_end",
+            issue=state.issue_number,
+            stage=name,
+            duration_s=duration,
+            payload={"success": False, "timeout": True},
+        )
+        emitter.emit_notification(
+            "stage_end",
+            issue=state.issue_number,
+            stage=name,
+            duration_s=duration,
+            verdict="timeout",
         )
         raise
     except FatalPipelineError:
@@ -107,28 +123,52 @@ async def run_stage(
     except Exception as exc:
         duration = time.monotonic() - start
         emitter.emit(
-            "stage_end", issue=state.issue_number, stage=name,
-            duration_s=duration, payload={"success": False, "error": str(exc)},
+            "stage_end",
+            issue=state.issue_number,
+            stage=name,
+            duration_s=duration,
+            payload={"success": False, "error": str(exc)},
+        )
+        emitter.emit_notification(
+            "stage_end",
+            issue=state.issue_number,
+            stage=name,
+            duration_s=duration,
+            verdict="error",
         )
         raise
 
     duration = time.monotonic() - start
     emitter.emit(
-        "stage_end", issue=state.issue_number, stage=name,
-        duration_s=duration, payload={"success": True},
+        "stage_end",
+        issue=state.issue_number,
+        stage=name,
+        duration_s=duration,
+        payload={"success": True},
+    )
+    emitter.emit_notification(
+        "stage_end",
+        issue=state.issue_number,
+        stage=name,
+        duration_s=duration,
+        verdict="pass",
+        findings_count=len(state.findings.get("current", [])),
     )
 
     phase, board_status = STAGE_PHASE_MAP.get(name, ("unknown", "in-progress"))
     try:
         update_issue_status(
-            config.factory_path, state.issue_number, board_status, stage=name,
+            config.factory_path,
+            state.issue_number,
+            board_status,
+            stage=name,
             pr_number=state.pr_number,
         )
     except Exception:
         logger.warning("Board update failed for stage %s", name, exc_info=True)
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -140,15 +180,15 @@ async def run_pipeline(
     hotfix: bool = False,
 ) -> None:
     """Execute the full pipeline from current stage to completion."""
+    from railclaw_pipeline.stages.cycle2_gemini import run_gemini_loop
     from railclaw_pipeline.stages.stage0_preflight import run_preflight
     from railclaw_pipeline.stages.stage1_blueprint import run_blueprint
-    from railclaw_pipeline.stages.stage2_wrench import run_wrench
     from railclaw_pipeline.stages.stage2_5_pr import run_create_pr
-    from railclaw_pipeline.stages.stage3_audit import run_audit
+    from railclaw_pipeline.stages.stage2_wrench import run_wrench
     from railclaw_pipeline.stages.stage3_5_fix import run_audit_fix
+    from railclaw_pipeline.stages.stage3_audit import run_audit
     from railclaw_pipeline.stages.stage4_review import run_review
     from railclaw_pipeline.stages.stage5_fix_loop import run_fix_loop
-    from railclaw_pipeline.stages.cycle2_gemini import run_gemini_loop
     from railclaw_pipeline.stages.stage7_docs import run_docs
     from railclaw_pipeline.stages.stage8_approval import run_approval
     from railclaw_pipeline.stages.stage8c_merge import run_merge
@@ -166,8 +206,13 @@ async def run_pipeline(
             wrench_runner = AgentRunner(get_agent_config(config, "wrench"), config.repo_path)
             scope_runner = AgentRunner(get_agent_config(config, "scope"), config.repo_path)
             state = await run_stage(
-                "stage11_hotfix", run_hotfix, state, config, emitter,
-                wrench_runner, scope_runner,
+                "stage11_hotfix",
+                run_hotfix,
+                state,
+                config,
+                emitter,
+                wrench_runner,
+                scope_runner,
             )
             state.status = PipelineStatus.COMPLETED
             save_state(state, config.state_path)
@@ -176,24 +221,40 @@ async def run_pipeline(
 
         state = await run_stage("stage0_preflight", run_preflight, state, config, emitter)
         state = await run_stage(
-            "stage1_blueprint", run_blueprint, state, config, emitter,
+            "stage1_blueprint",
+            run_blueprint,
+            state,
+            config,
+            emitter,
             AgentRunner(blueprint_config, config.repo_path),
         )
         state = await run_stage(
-            "stage2_wrench", run_wrench, state, config, emitter,
+            "stage2_wrench",
+            run_wrench,
+            state,
+            config,
+            emitter,
             AgentRunner(wrench_config, config.repo_path),
         )
         state = await run_stage("stage2.5_create_pr", run_create_pr, state, config, emitter)
 
         state = await run_stage(
-            "stage3_audit", run_audit, state, config, emitter,
+            "stage3_audit",
+            run_audit,
+            state,
+            config,
+            emitter,
             AgentRunner(scope_config, config.repo_path),
         )
 
         current_findings = state.findings.get("current", [])
         if current_findings:
             state = await run_stage(
-                "stage3.5_audit_fix", run_audit_fix, state, config, emitter,
+                "stage3.5_audit_fix",
+                run_audit_fix,
+                state,
+                config,
+                emitter,
                 AgentRunner(wrench_config, config.repo_path),
             )
         else:
@@ -204,7 +265,11 @@ async def run_pipeline(
             save_state(state, config.state_path)
 
             state = await run_stage(
-                "stage4_review", run_review, state, config, emitter,
+                "stage4_review",
+                run_review,
+                state,
+                config,
+                emitter,
                 AgentRunner(scope_config, config.repo_path),
             )
 
@@ -212,14 +277,22 @@ async def run_pipeline(
                 break
 
             if rnd == 4:
-                emitter.emit("escalation", issue=state.issue_number, payload={
-                    "type": "fix_loop_exhausted",
-                    "round": 5,
-                    "message": "Fix loop exhausted 5 rounds. Escalation to Chris.",
-                })
+                emitter.emit(
+                    "escalation",
+                    issue=state.issue_number,
+                    payload={
+                        "type": "fix_loop_exhausted",
+                        "round": 5,
+                        "message": "Fix loop exhausted 5 rounds. Escalation to Chris.",
+                    },
+                )
 
             state = await run_stage(
-                "stage5_fix_loop", run_fix_loop, state, config, emitter,
+                "stage5_fix_loop",
+                run_fix_loop,
+                state,
+                config,
+                emitter,
                 AgentRunner(wrench_config, config.repo_path),
             )
 
@@ -228,7 +301,11 @@ async def run_pipeline(
         stall = 0
         while not state.cycle.gemini_clean and state.cycle.cycle2_round < cycle2_cap:
             state = await run_stage(
-                "cycle2_gemini_loop", run_gemini_loop, state, config, emitter,
+                "cycle2_gemini_loop",
+                run_gemini_loop,
+                state,
+                config,
+                emitter,
                 AgentRunner(scope_config, config.repo_path),
             )
             state.cycle.cycle2_round += 1
@@ -237,7 +314,10 @@ async def run_pipeline(
             cur_count = len(state.findings.get("current", []))
             logger.info(
                 "cycle2_round %d: findings=%d, gemini_clean=%s, stall=%d",
-                state.cycle.cycle2_round, cur_count, state.cycle.gemini_clean, stall,
+                state.cycle.cycle2_round,
+                cur_count,
+                state.cycle.gemini_clean,
+                stall,
             )
             if cur_count >= prev_count:
                 stall += 1
@@ -246,10 +326,14 @@ async def run_pipeline(
             prev_count = cur_count
 
             if stall >= 2:
-                emitter.emit("cycle2_not_converging", issue=state.issue_number, payload={
-                    "rounds": state.cycle.cycle2_round,
-                    "findings": cur_count,
-                })
+                emitter.emit(
+                    "cycle2_not_converging",
+                    issue=state.issue_number,
+                    payload={
+                        "rounds": state.cycle.cycle2_round,
+                        "findings": cur_count,
+                    },
+                )
                 stall = 0
 
         if not state.cycle.gemini_clean and state.cycle.cycle2_round >= cycle2_cap:
@@ -263,7 +347,11 @@ async def run_pipeline(
         state = await run_stage("stage8c_merge", run_merge, state, config, emitter)
         state = await run_stage("stage9_deploy", run_deploy, state, config, emitter)
         state = await run_stage(
-            "stage10_qa", run_qa, state, config, emitter,
+            "stage10_qa",
+            run_qa,
+            state,
+            config,
+            emitter,
             AgentRunner(get_agent_config(config, "beaker"), config.repo_path),
         )
 
@@ -275,25 +363,41 @@ async def run_pipeline(
         state.status = PipelineStatus.FAILED
         state.error = {"category": exc.category, "message": str(exc), "stage": state.stage.value}
         save_state(state, config.state_path)
-        emitter.emit("fatal_error", issue=state.issue_number, payload={
-            "category": exc.category, "message": str(exc),
-        })
-    except asyncio.TimeoutError:
+        emitter.emit(
+            "fatal_error",
+            issue=state.issue_number,
+            payload={
+                "category": exc.category,
+                "message": str(exc),
+            },
+        )
+    except TimeoutError:
         state.status = PipelineStatus.FAILED
         state.error = {"category": "timeout", "message": f"Stage {state.stage.value} timed out"}
         save_state(state, config.state_path)
-        emitter.emit("fatal_error", issue=state.issue_number, payload={
-            "category": "timeout", "message": f"Stage {state.stage.value} timed out",
-        })
+        emitter.emit(
+            "fatal_error",
+            issue=state.issue_number,
+            payload={
+                "category": "timeout",
+                "message": f"Stage {state.stage.value} timed out",
+            },
+        )
     except Exception as exc:
         state.status = PipelineStatus.FAILED
         state.error = {"category": "unhandled", "message": str(exc), "stage": state.stage.value}
         save_state(state, config.state_path)
-        emitter.emit("fatal_error", issue=state.issue_number, payload={
-            "category": "unhandled", "message": str(exc),
-        })
+        emitter.emit(
+            "fatal_error",
+            issue=state.issue_number,
+            payload={
+                "category": "unhandled",
+                "message": str(exc),
+            },
+        )
     finally:
         from railclaw_pipeline.stages.stage12_lessons import run_lessons
+
         try:
             await run_lessons(state, config, emitter)
         except Exception as lessons_err:

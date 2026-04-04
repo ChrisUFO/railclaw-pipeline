@@ -1,6 +1,7 @@
 """CLI interface for pipeline orchestrator."""
 
 import asyncio
+import contextlib
 import json
 import os
 import subprocess
@@ -107,10 +108,8 @@ def _run_pipeline_child(
     try:
         asyncio.run(run_pipeline(state, config, emitter, hotfix=hotfix))
     except Exception as exc:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             state = load_state(state_path)
-        except FileNotFoundError:
-            pass
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
         save_state(state, state_path)
@@ -340,10 +339,8 @@ def run(
 
             state = load_state(state_path)
         except Exception as exc:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 state = load_state(state_path)
-            except FileNotFoundError:
-                pass
             state.status = PipelineStatus.FAILED
             state.error = {"message": str(exc)}
             save_state(state, state_path)
@@ -521,6 +518,29 @@ def cleanup(factory_path: str | None, max_age_days: int, dry_run: bool) -> None:
             "message": (
                 f"{'Would delete' if dry_run else 'Deleted'} {len(deleted)} old run directories"
             ),
+        }
+    )
+
+
+@main.command()
+@click.option("--factory-path", type=str, help="Path to factory config directory")
+@click.option("--since", type=str, help="ISO8601 timestamp to filter notifications since")
+@click.option("--limit", type=int, default=100, help="Max notifications to return")
+def notifications(factory_path: str | None, since: str | None, limit: int) -> None:
+    from railclaw_pipeline.events.notifications import query_notifications
+
+    effective_factory = factory_path or os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    os.environ["RAILCLAW_FACTORY_PATH"] = effective_factory
+
+    results = query_notifications(since=since, limit=limit)
+
+    output_result(
+        {
+            "ok": True,
+            "action": "notifications",
+            "count": len(results),
+            "notifications": [n.__dict__ for n in results],
+            "message": f"Returned {len(results)} notification(s)",
         }
     )
 
