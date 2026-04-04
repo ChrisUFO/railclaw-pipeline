@@ -122,6 +122,31 @@ def _run_pipeline_child(
 
     state = load_state(state_path)
 
+    # Pre-flight validation in child process (detached mode)
+    # Skip if resuming from a stage past Stage 0 (already validated)
+    if state.stage.value == "stage0_preflight":
+        from railclaw_pipeline.validation.preflight import PreflightGate
+
+        gate = PreflightGate(
+            repo_path=config.repo_path,
+            factory_path=config.factory_path,
+            state_path=config.state_path,
+            lock_path=config.lock_path,
+            lock_max_age=config.lock_max_age,
+            disk_space_min_mb=config.preflight.get("diskSpaceMinMB", 500),
+            agent_commands=config.preflight.get("agentCommands"),
+        )
+        preflight_result = asyncio.run(gate.run())
+        if not preflight_result.passed:
+            state.status = PipelineStatus.FAILED
+            state.error = {
+                "message": f"Pre-flight checks failed ({preflight_result.failure_count} issue(s)).",
+                "preflight": preflight_result.to_dict(),
+            }
+            save_state(state, state_path)
+            logger.error("Pre-flight validation failed in child process")
+            return
+
     run_dir = _build_run_dir(factory_path, state.issue_number)
     emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
@@ -492,12 +517,14 @@ def status(factory_path: str | None, state_dir: str | None) -> None:
 @click.option("--state-dir", type=str, help="State directory")
 @click.option("--force-stage", type=str, help="Force resume at specific stage")
 @click.option("--detach", is_flag=True, help="Resume as background daemon process")
+@click.option("--skip-preflight", is_flag=True, help="Skip pre-flight validation checks")
 def resume(
     repo_path: str | None,
     factory_path: str | None,
     state_dir: str | None,
     force_stage: str | None,
     detach: bool,
+    skip_preflight: bool,
 ) -> None:
     effective_repo, effective_factory, state_path, pid_path = _resolve_config_paths(
         repo_path,

@@ -138,7 +138,11 @@ class RepairEngine:
             try:
                 fix_method = getattr(self, f"_fix_{issue.fix_action}", None)
                 if fix_method:
-                    await fix_method()
+                    # Pass detail as argument for fix methods that need it
+                    if issue.detail:
+                        await fix_method(issue.detail)
+                    else:
+                        await fix_method()
                     result.fixed.append(f"[{issue.category}] {issue.description}")
                     result.issues.remove(issue)
             except Exception as exc:

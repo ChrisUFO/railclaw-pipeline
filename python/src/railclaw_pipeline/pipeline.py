@@ -238,6 +238,24 @@ async def run_pipeline(
 
     resume_from = state.stage.value
 
+    def _cleanup_on_timeout(stage_name: str) -> None:
+        """Clean up artifacts after a stage timeout."""
+        logger.error("Cleaning up after timeout in %s", stage_name)
+        # Update state to reflect timeout failure
+        state.status = PipelineStatus.FAILED
+        state.error = {
+            "category": "timeout",
+            "message": f"Stage {stage_name} timed out",
+            "stage": stage_name,
+        }
+        save_state(state, config.state_path)
+        emitter.emit(
+            "stage_cleanup",
+            issue=state.issue_number,
+            stage=stage_name,
+            payload={"action": "timeout_cleanup"},
+        )
+
     try:
         if hotfix:
             wrench_runner = AgentRunner(get_agent_config(config, "wrench"), config.repo_path)
@@ -419,6 +437,19 @@ async def _run_cycle1_fix_loop(
         state.cycle.cycle1_round = rnd
         save_state(state, config.state_path)
 
+        # Check circuit breaker before scope review
+        if circuit_breaker and circuit_breaker.is_open("scope"):
+            emitter.emit(
+                "escalation",
+                issue=state.issue_number,
+                payload={
+                    "type": "circuit_breaker_open",
+                    "agent": "scope",
+                    "message": f"Circuit breaker open for scope agent ({circuit_breaker.get_consecutive_timeouts('scope')} consecutive timeouts). Skipping review.",
+                },
+            )
+            break
+
         state = await run_stage(
             "stage4_review",
             run_review,
@@ -431,6 +462,19 @@ async def _run_cycle1_fix_loop(
         )
 
         if state.cycle.scope_verdict == "pass":
+            break
+
+        # Check circuit breaker before wrench fix
+        if circuit_breaker and circuit_breaker.is_open("wrench"):
+            emitter.emit(
+                "escalation",
+                issue=state.issue_number,
+                payload={
+                    "type": "circuit_breaker_open",
+                    "agent": "wrench",
+                    "message": f"Circuit breaker open for wrench agent ({circuit_breaker.get_consecutive_timeouts('wrench')} consecutive timeouts). Escalating.",
+                },
+            )
             break
 
         if rnd == 4:
@@ -472,6 +516,19 @@ async def _run_cycle2_gemini(
     prev_count = -1
     stall = 0
     while not state.cycle.gemini_clean and state.cycle.cycle2_round < cycle2_cap:
+        # Check circuit breaker before each iteration
+        if circuit_breaker and circuit_breaker.is_open("scope"):
+            emitter.emit(
+                "escalation",
+                issue=state.issue_number,
+                payload={
+                    "type": "circuit_breaker_open",
+                    "agent": "scope",
+                    "message": f"Circuit breaker open for scope agent ({circuit_breaker.get_consecutive_timeouts('scope')} consecutive timeouts). Escalating.",
+                },
+            )
+            break
+
         state = await run_stage(
             "cycle2_gemini_loop",
             run_gemini_loop,
@@ -479,6 +536,8 @@ async def _run_cycle2_gemini(
             config,
             emitter,
             AgentRunner(scope_config, config.repo_path),
+            circuit_breaker=circuit_breaker,
+            agent_name="scope",
         )
         state.cycle.cycle2_round += 1
         save_state(state, config.state_path)
