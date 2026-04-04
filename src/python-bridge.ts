@@ -136,7 +136,7 @@ function updateStore(result: PythonBridgeResult): void {
       map[key] = {
         issueNumber: result.issueNumber,
         stage: result.stage,
-        status: result.status ?? "running",
+        status: result.status === "started" ? "running" : (result.status ?? "running"),
         startedAt: existing?.startedAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         statePath: result.statePath ?? existing?.statePath ?? "",

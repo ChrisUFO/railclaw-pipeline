@@ -49,10 +49,10 @@ def query_notifications(
     cutoff: datetime | None = None
     if since:
         try:
-            naive = datetime.fromisoformat(since)
-            cutoff = naive.replace(tzinfo=UTC)
+            dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            cutoff = dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
         except ValueError:
-            cutoff = datetime.fromisoformat(since.replace("Z", "+00:00")).astimezone(UTC)
+            pass
 
     with open(path, encoding="utf-8") as f:
         for line in f:
