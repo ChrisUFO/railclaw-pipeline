@@ -380,7 +380,7 @@ async def _run_cycle1_fix_loop(
     from railclaw_pipeline.stages.stage4_review import run_review
     from railclaw_pipeline.stages.stage5_fix_loop import run_fix_loop
 
-    for rnd in range(5):
+    for rnd in range(state.cycle.cycle1_round, 5):
         state.cycle.cycle1_round = rnd
         save_state(state, config.state_path)
 

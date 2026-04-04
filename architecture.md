@@ -131,10 +131,9 @@ Append-only JSON lines file at `{eventsDir}/notifications.jsonl`. Written at eve
 ```json
 {
   "ts": "2025-01-15T10:35:00Z",
-  "type": "stage_handoff",
+  "type": "stage_end",
   "issue": 25,
-  "from_stage": "stage1_blueprint",
-  "to_stage": "stage2_wrench",
+  "stage": "stage1_blueprint",
   "duration_s": 300,
   "verdict": "pass",
   "findings_count": 0,
