@@ -82,13 +82,9 @@ export function registerLifecycleHooks(api: OpenClawPluginApi, config: PluginCon
         for (const result of results) {
           if (result) {
             map[result.key] = {
-              issueNumber: map[result.key]!.issueNumber!,
-              stage: map[result.key]!.stage!,
+              ...map[result.key]!,
               status: result.status,
-              startedAt: map[result.key]!.startedAt!,
               updatedAt: new Date().toISOString(),
-              statePath: map[result.key]!.statePath ?? "",
-              pid: map[result.key]!.pid,
             };
           }
         }

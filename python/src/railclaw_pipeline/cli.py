@@ -82,6 +82,16 @@ def _resolve_config_paths(
     return effective_repo, effective_factory, state_file, pid_file
 
 
+def _build_run_dir(factory_path: str, issue: int | None) -> Path:
+    """Build the run log directory path for a given issue or manual run."""
+    return (
+        Path(factory_path)
+        / ".pipeline-events"
+        / "runs"
+        / (f"issue-{issue}" if issue else f"manual-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}")
+    )
+
+
 def _run_pipeline_child(
     state_path: Path,
     pid_path: Path,
@@ -110,16 +120,7 @@ def _run_pipeline_child(
 
     state = load_state(state_path)
 
-    run_dir = (
-        Path(factory_path)
-        / ".pipeline-events"
-        / "runs"
-        / (
-            f"issue-{state.issue_number}"
-            if state.issue_number
-            else f"manual-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
-        )
-    )
+    run_dir = _build_run_dir(factory_path, state.issue_number)
     emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
     try:
@@ -345,16 +346,7 @@ def run(
                 "factoryPath": effective_factory,
             }
         )
-        run_dir = (
-            Path(effective_factory)
-            / ".pipeline-events"
-            / "runs"
-            / (
-                f"issue-{issue}"
-                if issue
-                else f"manual-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
-            )
-        )
+        run_dir = _build_run_dir(effective_factory, issue)
         emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
         try:

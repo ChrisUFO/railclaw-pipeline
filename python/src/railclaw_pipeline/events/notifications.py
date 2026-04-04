@@ -62,14 +62,12 @@ def query_notifications(
             try:
                 data = json.loads(line)
                 if cutoff:
-                    ts_str = data["ts"]
                     try:
-                        ts_naive = datetime.fromisoformat(ts_str)
-                        ts_aware = ts_naive if ts_naive.tzinfo else ts_naive.replace(tzinfo=UTC)
+                        ts_aware = datetime.fromisoformat(data["ts"])
+                        if not ts_aware.tzinfo:
+                            ts_aware = ts_aware.replace(tzinfo=UTC)
                     except ValueError:
-                        ts_aware = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).astimezone(
-                            UTC
-                        )
+                        continue
                     if ts_aware < cutoff:
                         continue
                 valid_fields = {
