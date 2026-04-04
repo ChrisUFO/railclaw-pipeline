@@ -134,7 +134,6 @@ def _detach_fork(
 
     grandchild_pid = os.fork()
     if grandchild_pid > 0:
-        write_pid(pid_path, grandchild_pid)
         output_result(
             {
                 "ok": True,
@@ -158,8 +157,10 @@ def _detach_fork(
         state = load_state(state_path)
         state.pid = os.getpid()
         save_state(state, state_path)
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).error("Failed to persist PID to state: %s", exc)
 
     _run_pipeline_child(state_path, pid_path, repo_path, factory_path, hotfix)
 
@@ -385,7 +386,14 @@ def status(factory_path: str | None, state_dir: str | None) -> None:
         if pid and not is_pid_alive(pid):
             state.status = PipelineStatus.FAILED
             state.error = {"message": "Pipeline process died unexpectedly"}
-            state.timestamps.last_updated = datetime.now(UTC) if state.timestamps else None
+            if not state.timestamps:
+                state.timestamps = Timestamps(
+                    started=datetime.now(UTC),
+                    stage_entered=datetime.now(UTC),
+                    last_updated=datetime.now(UTC),
+                )
+            else:
+                state.timestamps.last_updated = datetime.now(UTC)
             save_state(state, state_path)
             remove_pid(pid_path)
 
@@ -528,6 +536,8 @@ def cleanup(factory_path: str | None, max_age_days: int, dry_run: bool) -> None:
 @click.option("--since", type=str, help="ISO8601 timestamp to filter notifications since")
 @click.option("--limit", type=int, default=100, help="Max notifications to return")
 def notifications(factory_path: str | None, since: str | None, limit: int) -> None:
+    from dataclasses import asdict
+
     from railclaw_pipeline.events.notifications import query_notifications
 
     effective_factory = factory_path or os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
@@ -540,7 +550,7 @@ def notifications(factory_path: str | None, since: str | None, limit: int) -> No
             "ok": True,
             "action": "notifications",
             "count": len(results),
-            "notifications": [n.__dict__ for n in results],
+            "notifications": [asdict(n) for n in results],
             "message": f"Returned {len(results)} notification(s)",
         }
     )

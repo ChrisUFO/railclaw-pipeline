@@ -49,25 +49,31 @@ export function registerLifecycleHooks(api: OpenClawPluginApi, config: PluginCon
     try {
       const map = pipelineStore.tryGetRuntime();
       if (map) {
-        for (const key of Object.keys(map)) {
+        const keys = Object.keys(map);
+        const checks = keys.map(async (key) => {
           const meta = map[key];
-          if (meta && meta.status === "running") {
-            if (meta.pid) {
-              const alive = await isProcessAlive(config.pythonCommand, meta.pid);
-              if (!alive) {
-                map[key] = {
-                  ...meta,
-                  status: "interrupted",
-                  updatedAt: new Date().toISOString(),
-                };
-              }
-            } else {
-              map[key] = {
-                ...meta,
-                status: "interrupted",
-                updatedAt: new Date().toISOString(),
-              };
-            }
+          if (!meta || meta.status !== "running") {
+            return null;
+          }
+          if (!meta.pid) {
+            return { key, status: "interrupted" };
+          }
+          const alive = await isProcessAlive(config.pythonCommand, meta.pid);
+          return alive ? null : { key, status: "interrupted" };
+        });
+
+        const results = await Promise.all(checks);
+        for (const result of results) {
+          if (result) {
+            map[result.key] = {
+              issueNumber: map[result.key]!.issueNumber!,
+              stage: map[result.key]!.stage!,
+              status: result.status,
+              startedAt: map[result.key]!.startedAt!,
+              updatedAt: new Date().toISOString(),
+              statePath: map[result.key]!.statePath ?? "",
+              pid: map[result.key]!.pid,
+            };
           }
         }
         pipelineStore.setRuntime(map);

@@ -115,26 +115,15 @@ def query_notifications(
 
 
 def write_notification(payload: NotificationPayload) -> None:
-    """Append a notification atomically: tempfile → fsync → os.replace."""
+    """Append a notification atomically: open → write → fsync → close."""
     path = get_notifications_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     _rotate_notifications(path)
     line = json.dumps(payload.__dict__, default=str) + "\n"
 
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(path.parent),
-        suffix=".tmp",
-        prefix="notif_",
-    )
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:
-        with os.fdopen(fd, "w") as tmp_file:
-            if path.exists():
-                tmp_file.write(path.read_text(encoding="utf-8"))
-            tmp_file.write(line)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-        os.replace(tmp_path, str(path))
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise
+        os.write(fd, line.encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
