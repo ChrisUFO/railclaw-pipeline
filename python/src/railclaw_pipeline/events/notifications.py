@@ -1,10 +1,15 @@
 """Notification read/query/rotation for stage handoff payloads."""
 
+import contextlib
 import json
+import logging
 import os
+import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 MAX_NOTIFICATION_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ROTATED_FILES = 3
@@ -32,7 +37,7 @@ def get_notifications_path() -> Path:
 
 
 def _rotate_notifications(path: Path) -> None:
-    """Rotate notifications.jsonl at 10MB, keep 3 archives."""
+    """Rotate notifications.jsonl at 10MB, keep 3 archives. Atomic via tempfile+fsync."""
     if not path.exists():
         return
     if path.stat().st_size < MAX_NOTIFICATION_FILE_SIZE:
@@ -45,7 +50,22 @@ def _rotate_notifications(path: Path) -> None:
             else:
                 dst = path.with_suffix(f".jsonl.{i + 1}")
                 src.rename(dst)
-    path.rename(path.with_suffix(".jsonl.1"))
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(path.parent),
+        suffix=".tmp",
+        prefix="notifications_",
+    )
+    try:
+        with os.fdopen(fd, "w") as tmp_file:
+            tmp_file.write(path.read_text(encoding="utf-8"))
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_path, str(path.with_suffix(".jsonl.1")))
+        path.unlink()
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def query_notifications(
@@ -60,7 +80,11 @@ def query_notifications(
     results: list[NotificationPayload] = []
     cutoff: datetime | None = None
     if since:
-        cutoff = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        try:
+            naive = datetime.fromisoformat(since)
+            cutoff = naive.replace(tzinfo=UTC)
+        except ValueError:
+            cutoff = datetime.fromisoformat(since.replace("Z", "+00:00")).astimezone(UTC)
 
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -70,23 +94,47 @@ def query_notifications(
             try:
                 data = json.loads(line)
                 if cutoff:
-                    ts = datetime.fromisoformat(data["ts"].replace("Z", "+00:00"))
-                    if ts < cutoff:
+                    ts_str = data["ts"]
+                    try:
+                        ts_naive = datetime.fromisoformat(ts_str)
+                        ts_aware = ts_naive if ts_naive.tzinfo else ts_naive.replace(tzinfo=UTC)
+                    except ValueError:
+                        ts_aware = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).astimezone(
+                            UTC
+                        )
+                    if ts_aware < cutoff:
                         continue
                 results.append(NotificationPayload(**data))
                 if len(results) >= limit:
                     break
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                logger.warning("Skipping malformed notification line: %s", exc)
                 continue
 
     return results
 
 
 def write_notification(payload: NotificationPayload) -> None:
-    """Append a notification to the notifications file, with rotation."""
+    """Append a notification atomically: tempfile → fsync → os.replace."""
     path = get_notifications_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     _rotate_notifications(path)
-    line = json.dumps(payload.__dict__, default=str)
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    line = json.dumps(payload.__dict__, default=str) + "\n"
+
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(path.parent),
+        suffix=".tmp",
+        prefix="notif_",
+    )
+    try:
+        with os.fdopen(fd, "w") as tmp_file:
+            if path.exists():
+                tmp_file.write(path.read_text(encoding="utf-8"))
+            tmp_file.write(line)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_path, str(path))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise

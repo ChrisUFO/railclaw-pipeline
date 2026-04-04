@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from railclaw_pipeline.events.notifications import NotificationPayload, write_notification
+
 MAX_EVENT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ROTATED_FILES = 3
 
@@ -41,8 +43,6 @@ class EventEmitter:
         next_stage: str | None = None,
     ) -> None:
         """Emit a structured stage handoff notification."""
-        from railclaw_pipeline.events.notifications import NotificationPayload, write_notification
-
         payload = NotificationPayload(
             ts=datetime.now(UTC).isoformat(),
             type=notif_type,

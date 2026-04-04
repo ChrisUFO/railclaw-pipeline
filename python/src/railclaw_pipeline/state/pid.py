@@ -1,10 +1,13 @@
 """PID file management for detached pipeline daemon."""
 
 import contextlib
+import logging
 import os
 import sys
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":
     import ctypes
@@ -46,7 +49,11 @@ def read_pid(pid_path: Path) -> int | None:
         return None
     try:
         return int(pid_path.read_text().strip())
-    except (ValueError, OSError):
+    except ValueError:
+        logger.warning("PID file %s contains non-integer value", pid_path)
+        return None
+    except OSError as exc:
+        logger.warning("Failed to read PID file %s: %s", pid_path, exc)
         return None
 
 

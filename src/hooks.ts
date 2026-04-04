@@ -5,6 +5,15 @@ import type { PluginConfig } from "./config.js";
 
 function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
   return new Promise((resolve) => {
+    const TIMEOUT_MS = 5000;
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+      resolve(false);
+    }, TIMEOUT_MS);
+
     const proc = spawn(pythonCommand, ["_pid-check", "--pid", pid.toString()], {
       shell: false,
       stdio: ["ignore", "pipe", "ignore"],
@@ -14,6 +23,8 @@ function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
       out += d.toString();
     });
     proc.on("close", (code) => {
+      if (timedOut) return;
+      clearTimeout(timer);
       if (code === 0) {
         try {
           const parsed = JSON.parse(out.trim());
@@ -25,7 +36,11 @@ function isProcessAlive(pythonCommand: string, pid: number): Promise<boolean> {
         resolve(false);
       }
     });
-    proc.on("error", () => resolve(false));
+    proc.on("error", () => {
+      if (timedOut) return;
+      clearTimeout(timer);
+      resolve(false);
+    });
   });
 }
 
