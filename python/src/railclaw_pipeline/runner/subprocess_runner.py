@@ -208,7 +208,7 @@ async def _kill_process_cascade(
                 return
 
         await proc.wait()
-    except Exception:
+    except (OSError, ProcessLookupError):
         pass
 
 

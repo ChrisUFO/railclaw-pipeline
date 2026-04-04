@@ -125,33 +125,35 @@ class StateLock:
         """Read current lock info, or None if no lock exists."""
         return self._read_lock_info()
 
+    def _write_and_verify(self, content: str) -> bool:
+        """Write lock content and verify our PID was persisted.
+
+        Returns True if our PID is confirmed in the lock file.
+        """
+        if self._atomic_write(content):
+            info = self._read_lock_info()
+            if info and info.pid == os.getpid():
+                return True
+        return False
+
     def _try_acquire(self, agent: str, stage: str, run_id: str) -> bool:
         """Attempt to acquire the lock atomically.
 
         Returns True if lock was acquired, False if already held.
-        Uses post-write PID verification to prevent race conditions
-        where two processes both think they hold the lock.
+        Uses post-write PID verification to prevent race conditions.
+        If another process overwrites our lock, we return False without
+        deleting their valid lock.
         """
         if not self.lock_path.exists():
             content = self._build_lock_content(agent, stage, run_id)
-            if self._atomic_write(content):
-                # Post-write verification: confirm our PID is in the lock file
-                info = self._read_lock_info()
-                if info and info.pid == os.getpid():
-                    return True
-                # Another process overwrote us — undo and fail
-                self._remove_lock_file()
-                return False
+            if self._write_and_verify(content):
+                return True
 
         info = self._read_lock_info()
         if info is None or not is_pid_alive(info.pid):
             content = self._build_lock_content(agent, stage, run_id)
-            if self._atomic_write(content):
-                info = self._read_lock_info()
-                if info and info.pid == os.getpid():
-                    return True
-                self._remove_lock_file()
-                return False
+            if self._write_and_verify(content):
+                return True
 
         return False
 

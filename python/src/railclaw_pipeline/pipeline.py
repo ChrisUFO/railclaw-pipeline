@@ -264,6 +264,7 @@ async def run_pipeline(
 
     cb_path = config.factory_path / config.state_dir / "circuit_breaker.json"
     circuit_breaker = CircuitBreaker(cb_path)
+    circuit_breaker.reset()
 
     resume_from = state.stage.value
 

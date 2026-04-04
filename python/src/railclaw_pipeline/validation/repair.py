@@ -7,7 +7,6 @@ import contextlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -501,7 +500,7 @@ class RepairEngine:
     async def _fix_uncommitted_changes(self) -> None:
         """Stash uncommitted changes."""
         try:
-            await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 "git",
                 "-C",
                 str(self.repo_path),
@@ -512,6 +511,7 @@ class RepairEngine:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+            await proc.wait()
         except (OSError, FileNotFoundError):
             pass
 

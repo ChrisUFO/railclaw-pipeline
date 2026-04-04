@@ -418,7 +418,11 @@ def run(
 
         lock = StateLock(pid_path.parent / "pipeline.lock", max_age=config.lock_max_age)
         try:
-            lock.acquire(force=True)
+            lock.acquire(
+                agent="pipeline",
+                stage=state.stage.value,
+                run_id=f"issue-{state.issue_number}",
+            )
         except StateLockError as exc:
             output_result({"ok": False, "action": "run", "error": str(exc)})
             return

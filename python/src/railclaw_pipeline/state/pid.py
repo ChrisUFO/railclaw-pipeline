@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -108,6 +109,17 @@ def kill_pid(pid: int, timeout: float = 10.0) -> bool:
             if not is_pid_alive(pid):
                 return True
             time.sleep(0.2)
+
+        if is_pid_alive(pid):
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/F"],
+                    capture_output=True,
+                    timeout=10,
+                )
+                time.sleep(0.5)
+            except (OSError, FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
         return not is_pid_alive(pid)
 
