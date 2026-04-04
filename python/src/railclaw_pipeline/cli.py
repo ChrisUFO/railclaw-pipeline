@@ -629,6 +629,58 @@ def notifications(factory_path: str | None, since: str | None, limit: int) -> No
     )
 
 
+@main.command()
+@click.option("--repo-path", type=str, help="Absolute path to the target repo")
+@click.option("--factory-path", type=str, help="Path to factory config directory")
+@click.option("--state-dir", type=str, help="State directory")
+@click.option("--fix", is_flag=True, help="Auto-fix all safe issues")
+@click.option("--force", is_flag=True, help="Force fix dangerous issues")
+def repair(
+    repo_path: str | None,
+    factory_path: str | None,
+    state_dir: str | None,
+    fix: bool,
+    force: bool,
+) -> None:
+    effective_repo, effective_factory, state_path, pid_path = _resolve_config_paths(
+        repo_path,
+        factory_path,
+        state_dir,
+    )
+
+    from railclaw_pipeline.validation.repair import RepairEngine
+
+    engine = RepairEngine(
+        repo_path=Path(effective_repo),
+        factory_path=Path(effective_factory),
+        state_path=state_path,
+        lock_path=pid_path.parent / "pipeline.lock",
+        state_dir=pid_path.parent,
+    )
+
+    if fix:
+        result = asyncio.run(engine.repair(force=force))
+    else:
+        result = asyncio.run(engine.scan())
+        result.unfixable = [
+            f"[{i.category}] {i.description}" for i in result.issues if not i.fixable
+        ]
+
+    output_result(
+        {
+            "ok": True,
+            "action": "repair",
+            "fix_mode": fix,
+            "result": result.to_dict(),
+            "message": (
+                f"Found {result.issue_count} issue(s)"
+                + (f", fixed {len(result.fixed)}" if fix else "")
+                + (f", {len(result.unfixable)} unfixable" if result.unfixable else "")
+            ),
+        }
+    )
+
+
 @main.command("_internal-run", hidden=True)
 @click.option("--state-path", type=str, required=True)
 @click.option("--pid-path", type=str, required=True)
