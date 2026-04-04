@@ -81,8 +81,8 @@ class TestNotificationsCommand:
         )
         data = json.loads(result.stdout.decode().strip())
         assert data["count"] == 2
-        assert data["notifications"][0]["type"] == "stage_start"
-        assert data["notifications"][1]["type"] == "stage_end"
+        assert data["notifications"][0]["type"] == "stage_end"
+        assert data["notifications"][1]["type"] == "stage_start"
 
     def test_notifications_since_filter(self, temp_factory_env):
         """railclaw-pipeline notifications --since filters correctly."""

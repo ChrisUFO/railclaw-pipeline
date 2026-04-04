@@ -108,7 +108,7 @@ class TestDetachRun:
 
         pid_path = temp_factory_env["pid_path"]
         assert pid_path.exists(), "PID file should be created in detach mode"
-        pid_content = pid_path.read_text().strip()
+        pid_content = pid_path.read_text().strip().split("\n")[0]
         assert int(pid_content) == result["pid"]
 
     def test_detach_run_creates_state_file(self, temp_factory_env):
@@ -196,4 +196,4 @@ class TestDetachRun:
         status = json.loads(output)
         assert status["ok"] is False
         assert "error" in status
-        assert status["issueNumber"] == 2
+        assert "already running" in status["error"].lower()

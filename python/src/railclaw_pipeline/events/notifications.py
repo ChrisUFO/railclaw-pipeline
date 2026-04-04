@@ -1,13 +1,13 @@
 """Notification read/query/rotation for stage handoff payloads."""
 
-import contextlib
 import json
 import logging
 import os
-import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from railclaw_pipeline.utils.rotation import rotate_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -36,48 +36,16 @@ def get_notifications_path() -> Path:
     return Path(factory_path) / events_dir / "notifications.jsonl"
 
 
-def _rotate_notifications(path: Path) -> None:
-    """Rotate notifications.jsonl at 10MB, keep 3 archives. Atomic via tempfile+fsync."""
-    if not path.exists():
-        return
-    if path.stat().st_size < MAX_NOTIFICATION_FILE_SIZE:
-        return
-    for i in range(MAX_ROTATED_FILES, 0, -1):
-        src = path.with_suffix(f".jsonl.{i}")
-        if src.exists():
-            if i == MAX_ROTATED_FILES:
-                src.unlink()
-            else:
-                dst = path.with_suffix(f".jsonl.{i + 1}")
-                src.rename(dst)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(path.parent),
-        suffix=".tmp",
-        prefix="notifications_",
-    )
-    try:
-        with os.fdopen(fd, "w") as tmp_file:
-            tmp_file.write(path.read_text(encoding="utf-8"))
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-        os.replace(tmp_path, str(path.with_suffix(".jsonl.1")))
-        path.unlink()
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise
-
-
 def query_notifications(
     since: str | None = None,
     limit: int = 100,
 ) -> list[NotificationPayload]:
-    """Read notifications from file, optionally filtered by timestamp."""
+    """Read notifications from file, returning newest-first for polling consumers."""
     path = get_notifications_path()
     if not path.exists():
         return []
 
-    results: list[NotificationPayload] = []
+    all_entries: list[NotificationPayload] = []
     cutoff: datetime | None = None
     if since:
         try:
@@ -104,22 +72,21 @@ def query_notifications(
                         )
                     if ts_aware < cutoff:
                         continue
-                results.append(NotificationPayload(**data))
-                if len(results) >= limit:
-                    break
+                all_entries.append(NotificationPayload(**data))
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 logger.warning("Skipping malformed notification line: %s", exc)
                 continue
 
-    return results
+    all_entries.reverse()
+    return all_entries[:limit]
 
 
 def write_notification(payload: NotificationPayload) -> None:
     """Append a notification atomically: open → write → fsync → close."""
     path = get_notifications_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    _rotate_notifications(path)
-    line = json.dumps(payload.__dict__, default=str) + "\n"
+    rotate_jsonl(path, MAX_NOTIFICATION_FILE_SIZE, MAX_ROTATED_FILES)
+    line = json.dumps(asdict(payload), default=str) + "\n"
 
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:

@@ -39,8 +39,9 @@ export function spawnPythonBridge(
       args.push("--force-stage", params.forceStage);
     }
 
-    const detach = params.action === "run" && params.detach !== false;
-    if (detach && (params.action === "run" || params.action === "resume")) {
+    const detach =
+      (params.action === "run" || params.action === "resume") && params.detach !== false;
+    if (detach) {
       args.push("--detach");
     }
 

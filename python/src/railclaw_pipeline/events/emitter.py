@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from railclaw_pipeline.events.notifications import NotificationPayload, write_notification
+from railclaw_pipeline.utils.rotation import rotate_jsonl
 
 MAX_EVENT_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ROTATED_FILES = 3
@@ -107,20 +108,7 @@ class EventEmitter:
 
     def _rotate_events(self) -> None:
         """Rotate events.jsonl at 10MB, keep 3 archives."""
-        if not self.events_path.exists():
-            return
-        if self.events_path.stat().st_size < MAX_EVENT_FILE_SIZE:
-            return
-        # Shift existing archives
-        for i in range(MAX_ROTATED_FILES, 0, -1):
-            src = self.events_path.with_suffix(f".jsonl.{i}")
-            if src.exists():
-                if i == MAX_ROTATED_FILES:
-                    src.unlink()  # Delete oldest
-                else:
-                    dst = self.events_path.with_suffix(f".jsonl.{i + 1}")
-                    src.rename(dst)
-        self.events_path.rename(self.events_path.with_suffix(".jsonl.1"))
+        rotate_jsonl(self.events_path, MAX_EVENT_FILE_SIZE, MAX_ROTATED_FILES)
 
     def close(self) -> None:
         """Flush and close."""

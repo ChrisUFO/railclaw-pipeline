@@ -4,7 +4,9 @@ import contextlib
 import logging
 import os
 import sys
+import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -40,21 +42,53 @@ else:
 
 
 def write_pid(pid_path: Path, pid: int) -> None:
+    """Write PID to file atomically with a timestamp for stale detection."""
     pid_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_path.write_text(str(pid))
+    content = f"{pid}\n{datetime.now(UTC).isoformat()}\n"
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(pid_path.parent),
+        suffix=".tmp",
+        prefix="pid_",
+    )
+    try:
+        with os.fdopen(fd, "w") as tmp_file:
+            tmp_file.write(content)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_path, str(pid_path))
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 def read_pid(pid_path: Path) -> int | None:
+    """Read PID from file. Returns None if missing or malformed."""
     if not pid_path.exists():
         return None
     try:
-        return int(pid_path.read_text().strip())
+        content = pid_path.read_text().strip()
+        first_line = content.split("\n")[0]
+        return int(first_line)
     except ValueError:
         logger.warning("PID file %s contains non-integer value", pid_path)
         return None
     except OSError as exc:
         logger.warning("Failed to read PID file %s: %s", pid_path, exc)
         return None
+
+
+def read_pid_timestamp(pid_path: Path) -> datetime | None:
+    """Read the timestamp from a PID file, if present."""
+    if not pid_path.exists():
+        return None
+    try:
+        lines = pid_path.read_text().strip().split("\n")
+        if len(lines) >= 2:
+            return datetime.fromisoformat(lines[1])
+    except (ValueError, OSError):
+        pass
+    return None
 
 
 def kill_pid(pid: int, timeout: float = 10.0) -> bool:

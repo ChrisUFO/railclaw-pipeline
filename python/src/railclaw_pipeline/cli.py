@@ -3,7 +3,9 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
+import signal as signal_lib
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -28,22 +30,29 @@ from railclaw_pipeline.state.pid import (
     write_pid,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _resolve_factory_path() -> tuple[str, str]:
+    """Resolve factory and state dir from environment variables."""
+    factory_path = os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    state_dir = os.environ.get("RAILCLAW_STATE_DIR", ".pipeline-state")
+    return factory_path, state_dir
+
 
 def get_state_path() -> Path:
-    state_dir = os.environ.get("RAILCLAW_STATE_DIR", ".pipeline-state")
-    factory_path = os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    factory_path, state_dir = _resolve_factory_path()
     return Path(factory_path) / state_dir / "state.json"
 
 
 def get_pid_path() -> Path:
-    state_dir = os.environ.get("RAILCLAW_STATE_DIR", ".pipeline-state")
-    factory_path = os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    factory_path, state_dir = _resolve_factory_path()
     return Path(factory_path) / state_dir / "pipeline.pid"
 
 
 def get_events_path() -> Path:
-    events_dir = os.environ.get("RAILCLAW_EVENTS_DIR", ".pipeline-events")
     factory_path = os.environ.get("RAILCLAW_FACTORY_PATH", "factory")
+    events_dir = os.environ.get("RAILCLAW_EVENTS_DIR", ".pipeline-events")
     return Path(factory_path) / events_dir / "events.jsonl"
 
 
@@ -84,6 +93,14 @@ def _run_pipeline_child(
     from railclaw_pipeline.events.emitter import EventEmitter
     from railclaw_pipeline.pipeline import run_pipeline
 
+    if hasattr(signal_lib, "SIGTERM"):
+
+        def _sigterm_handler(_signum: int, _frame: Any) -> None:
+            logger.info("Received SIGTERM, shutting down daemon gracefully")
+            raise SystemExit(128 + _signum)
+
+        signal_lib.signal(signal_lib.SIGTERM, _sigterm_handler)
+
     config = PipelineConfig(
         {
             "repoPath": repo_path,
@@ -107,7 +124,9 @@ def _run_pipeline_child(
 
     try:
         asyncio.run(run_pipeline(state, config, emitter, hotfix=hotfix))
-    except Exception as exc:
+    except BaseException as exc:
+        if isinstance(exc, (SystemExit, KeyboardInterrupt)):
+            logger.info("Daemon interrupted, saving FAILED state")
         with contextlib.suppress(FileNotFoundError):
             state = load_state(state_path)
         state.status = PipelineStatus.FAILED
@@ -207,8 +226,8 @@ def _detach_subprocess(
         state = load_state(state_path)
         state.pid = proc.pid
         save_state(state, state_path)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.error("Failed to persist PID to state: %s", exc)
 
     output_result(
         {
@@ -556,7 +575,7 @@ def notifications(factory_path: str | None, since: str | None, limit: int) -> No
     )
 
 
-@main.command(hidden=True)
+@main.command("_internal-run", hidden=True)
 @click.option("--state-path", type=str, required=True)
 @click.option("--pid-path", type=str, required=True)
 @click.option("--repo-path", type=str, required=True)
