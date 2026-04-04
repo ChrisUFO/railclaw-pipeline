@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
@@ -12,13 +12,11 @@ from railclaw_pipeline.github.git import GitOperations
 from railclaw_pipeline.github.pr import PrClient
 from railclaw_pipeline.github.review import (
     ReviewResult,
-    extract_findings_from_comments,
-    extract_findings_from_reviews,
     parse_details_blocks,
     poll_reviews,
 )
 from railclaw_pipeline.prompts.loader import render_template
-from railclaw_pipeline.runner.agent import AgentConfig, AgentRunner
+from railclaw_pipeline.runner.agent import AgentRunner
 from railclaw_pipeline.runner.agent_config import get_agent_config
 from railclaw_pipeline.state.models import PipelineState
 from railclaw_pipeline.state.persistence import save_state
@@ -56,7 +54,12 @@ async def run_gemini_loop(
     emitter.emit("cycle2_poll_start", issue=state.issue_number, round=state.cycle.cycle2_round)
 
     review_result = await _poll_with_timeout(
-        pr_client, state.pr_number, last_ts, config, emitter, state,
+        pr_client,
+        state.pr_number,
+        last_ts,
+        config,
+        emitter,
+        state,
     )
 
     findings = _extract_gemini_findings(review_result)
@@ -81,10 +84,14 @@ async def run_gemini_loop(
     state.gemini_tracking["last_gemini_timestamp"] = review_result.last_processed_at
     save_state(state, config.state_path)
 
-    emitter.emit("cycle2_findings", issue=state.issue_number, round=state.cycle.cycle2_round, count=len(findings))
+    emitter.emit(
+        "cycle2_findings",
+        issue=state.issue_number,
+        round=state.cycle.cycle2_round,
+        count=len(findings),
+    )
 
     use_wrench_sr = state.cycle.cycle2_round >= config.escalation.get("wrenchSrAfterRound", 3) - 1
-    agent_name = "wrenchSr" if use_wrench_sr else "wrench"
 
     if use_wrench_sr:
         await _run_wrench_sr_fix(state, config, emitter, findings)
@@ -126,9 +133,14 @@ async def run_gemini_loop(
         emitter.emit("cycle2_scope_clean", issue=state.issue_number, round=state.cycle.cycle2_round)
     else:
         state.findings["current"] = scope_findings
-        emitter.emit("cycle2_scope_findings", issue=state.issue_number, verdict=scope_verdict, count=len(scope_findings))
+        emitter.emit(
+            "cycle2_scope_findings",
+            issue=state.issue_number,
+            verdict=scope_verdict,
+            count=len(scope_findings),
+        )
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -150,12 +162,10 @@ async def _poll_with_timeout(
         result = await poll_reviews(pr_client, pr_number, last_ts)
 
         gemini_reviews = [
-            r for r in result.raw_reviews
-            if r.get("author", "").lower().startswith("gemini")
+            r for r in result.raw_reviews if r.get("author", "").lower().startswith("gemini")
         ]
         gemini_comments = [
-            c for c in result.raw_comments
-            if c.get("author", "").lower().startswith("gemini")
+            c for c in result.raw_comments if c.get("author", "").lower().startswith("gemini")
         ]
 
         if gemini_reviews or gemini_comments:
@@ -168,7 +178,7 @@ async def _poll_with_timeout(
                     findings=[],
                     is_clean=True,
                     has_formal_review=True,
-                    last_processed_at=datetime.now(timezone.utc).isoformat(),
+                    last_processed_at=datetime.now(UTC).isoformat(),
                 )
             return result
 
@@ -181,7 +191,7 @@ async def _poll_with_timeout(
         findings=[],
         is_clean=True,
         has_formal_review=False,
-        last_processed_at=datetime.now(timezone.utc).isoformat(),
+        last_processed_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -195,34 +205,40 @@ def _extract_gemini_findings(review_result: ReviewResult) -> list[dict[str, Any]
         author = f.get("author", "")
         blocks = parse_details_blocks(body)
         for block in blocks:
-            findings.append({
-                "category": "gemini",
-                "description": block.description[:500],
-                "raw_text": block.raw_text,
-                "source": "gemini_review",
-                "author": author,
-            })
+            findings.append(
+                {
+                    "category": "gemini",
+                    "description": block.description[:500],
+                    "raw_text": block.raw_text,
+                    "source": "gemini_review",
+                    "author": author,
+                }
+            )
         if not blocks and f.get("state") == "CHANGES_REQUESTED":
-            findings.append({
-                "category": "gemini",
-                "description": body[:500],
-                "raw_text": body,
-                "source": "gemini_review",
-                "author": author,
-            })
+            findings.append(
+                {
+                    "category": "gemini",
+                    "description": body[:500],
+                    "raw_text": body,
+                    "source": "gemini_review",
+                    "author": author,
+                }
+            )
 
     for c in review_result.raw_comments:
         body = c.get("body", "")
         if not body:
             continue
         author = c.get("author", "")
-        findings.append({
-            "category": "gemini-inline",
-            "description": body[:500],
-            "raw_text": body,
-            "source": "gemini_comment",
-            "author": author,
-        })
+        findings.append(
+            {
+                "category": "gemini-inline",
+                "description": body[:500],
+                "raw_text": body,
+                "source": "gemini_comment",
+                "author": author,
+            }
+        )
 
     return findings
 
@@ -368,4 +384,3 @@ def _parse_verdict(output: str) -> str:
     if "RESULT_START" in output and "status: success" in output:
         return "pass"
     return "revision"
-

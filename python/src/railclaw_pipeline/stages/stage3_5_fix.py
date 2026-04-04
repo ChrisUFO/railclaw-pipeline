@@ -1,7 +1,7 @@
 """Stage 3.5: Audit fix — Wrench fixes all audit findings verbatim."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -63,7 +63,7 @@ async def run_audit_fix(
         raise RuntimeError(f"Audit fix failed: {result.error or result.stderr[:500]}")
 
     state.findings["current"] = []
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

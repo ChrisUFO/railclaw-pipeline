@@ -1,7 +1,7 @@
 """Stage 10: Beaker QA sweep — run QA agent, file critical issues."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -64,7 +64,9 @@ async def run_qa(
         severity = finding.get("severity", "").upper()
         if severity in ("HIGH", "CRITICAL") and finding.get("status") != "fixed":
             filed_number = await _file_critical_issue(
-                config, state, finding,
+                config,
+                state,
+                finding,
             )
             if filed_number:
                 critical_filed.append(filed_number)
@@ -92,7 +94,7 @@ async def run_qa(
     )
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 
@@ -104,7 +106,9 @@ async def _file_critical_issue(
 ) -> int | None:
     """File a critical QA finding as a GitHub issue. Returns issue number or None."""
     gh = GhClient(config.repo_path)
-    title = f"[Auto-filed from QA] {finding.get('title', finding.get('description', 'Untitled')[:80])}"
+    title = (
+        f"[Auto-filed from QA] {finding.get('title', finding.get('description', 'Untitled')[:80])}"
+    )
     body = (
         f"**Source:** Beaker QA run for PR #{state.pr_number}\n"
         f"**Severity:** {finding.get('severity', 'UNKNOWN')}\n"
@@ -116,6 +120,7 @@ async def _file_critical_issue(
         url = result.get("url", "")
         if url:
             import re
+
             match = re.search(r"/issues/(\d+)", url)
             if match:
                 return int(match.group(1))

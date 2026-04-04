@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class PipelineStage(StrEnum):
     """Operational stages - where the pipeline is in the workflow."""
+
     IDLE = "idle"
     STAGE0_PREFLIGHT = "stage0_preflight"
     STAGE1_BLUEPRINT = "stage1_blueprint"
@@ -30,6 +31,7 @@ class PipelineStage(StrEnum):
 
 class PipelineStatus(StrEnum):
     """Execution status - how the pipeline is running."""
+
     RUNNING = "running"
     PAUSED = "paused"
     COMPLETED = "completed"
@@ -38,6 +40,7 @@ class PipelineStatus(StrEnum):
 
 class Timestamps(BaseModel):
     """Timestamp tracking for pipeline execution."""
+
     started: datetime
     stage_entered: datetime
     last_updated: datetime
@@ -45,6 +48,7 @@ class Timestamps(BaseModel):
 
 class CycleState(BaseModel):
     """Cycle tracking for fix loops."""
+
     cycle1_round: int = 0
     cycle2_round: int = 0
     scope_verdict: str = ""
@@ -53,12 +57,14 @@ class CycleState(BaseModel):
 
 class PipelineState(BaseModel):
     """Complete pipeline state."""
+
     version: int = 1
     issue_number: int
     pr_number: int | None = None
     branch: str | None = None
     stage: PipelineStage = PipelineStage.IDLE
     status: PipelineStatus = PipelineStatus.RUNNING
+    pid: int | None = None
     milestone_mode: bool = False
     milestone_label: str | None = None
     cycle: CycleState = Field(default_factory=CycleState)

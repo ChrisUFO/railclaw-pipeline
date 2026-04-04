@@ -1,10 +1,10 @@
 """Git operations wrapper — all calls use shell=False with list args."""
 
+import contextlib
 import re
 from pathlib import Path
 
 from railclaw_pipeline.runner.subprocess_runner import SubprocessError, run_subprocess
-
 
 # Characters unsafe in branch names — sanitize before use in file paths or commands
 UNSAFE_BRANCH_CHARS = re.compile(r"[^\w/-]")
@@ -17,6 +17,7 @@ def sanitize_branch_name(branch: str) -> str:
 
 class GitError(Exception):
     """Raised when a git operation fails."""
+
     pass
 
 
@@ -87,17 +88,13 @@ class GitOperations:
     async def delete_branch(self, branch: str, force: bool = False) -> None:
         """Delete a local branch."""
         flag = "-D" if force else "-d"
-        try:
+        with contextlib.suppress(SubprocessError):
             await self._git("branch", flag, branch, timeout=10)
-        except SubprocessError:
-            pass  # Already deleted
 
     async def delete_remote_branch(self, branch: str, remote: str = "origin") -> None:
         """Delete a remote branch."""
-        try:
+        with contextlib.suppress(SubprocessError):
             await self._git("push", remote, "--delete", branch, timeout=30)
-        except SubprocessError:
-            pass
 
     async def reset_hard(self, ref: str = "HEAD") -> str:
         """Reset working tree to ref."""

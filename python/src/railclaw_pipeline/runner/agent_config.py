@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.runner.agent import AgentConfig
 

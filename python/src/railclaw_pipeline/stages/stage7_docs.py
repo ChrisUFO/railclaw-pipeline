@@ -5,8 +5,7 @@ Advisory/non-blocking — does NOT prevent merge.
 """
 
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -50,14 +49,14 @@ async def run_docs(
     if not should_run:
         emitter.emit("docs_skip", issue=state.issue_number, reason="no_doc_indicators")
         if state.timestamps:
-            state.timestamps.last_updated = datetime.now(timezone.utc)
+            state.timestamps.last_updated = datetime.now(UTC)
         save_state(state, config.state_path)
         return state
 
     if runner is None:
         emitter.emit("docs_skip", issue=state.issue_number, reason="no_runner")
         if state.timestamps:
-            state.timestamps.last_updated = datetime.now(timezone.utc)
+            state.timestamps.last_updated = datetime.now(UTC)
         save_state(state, config.state_path)
         return state
 
@@ -101,7 +100,7 @@ async def run_docs(
         emitter.emit("docs_skip", issue=state.issue_number, reason="quill_failed")
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

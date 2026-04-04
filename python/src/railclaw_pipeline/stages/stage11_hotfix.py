@@ -5,12 +5,12 @@ Findings → new branch → Wrench fixes → PR → Scope re-review → approval
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
-from railclaw_pipeline.github.git import GitOperations
 from railclaw_pipeline.github.gh import GhClient
+from railclaw_pipeline.github.git import GitOperations
 from railclaw_pipeline.github.pr import PrClient
 from railclaw_pipeline.prompts.loader import render_template
 from railclaw_pipeline.runner.agent import AgentRunner
@@ -70,7 +70,7 @@ async def run_hotfix(
     if not findings:
         emitter.emit("hotfix_clean", issue=state.issue_number)
         if state.timestamps:
-            state.timestamps.last_updated = datetime.now(timezone.utc)
+            state.timestamps.last_updated = datetime.now(UTC)
         save_state(state, config.state_path)
         return state
 
@@ -162,7 +162,7 @@ async def run_hotfix(
     state.findings = {"current": regression_findings, "history": history}
 
     if state.timestamps:
-        state.timestamps.last_updated = datetime.now(timezone.utc)
+        state.timestamps.last_updated = datetime.now(UTC)
     save_state(state, config.state_path)
     return state
 

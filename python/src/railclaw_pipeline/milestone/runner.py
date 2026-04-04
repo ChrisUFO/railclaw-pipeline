@@ -1,8 +1,7 @@
 """Milestone runner — sequential per-issue execution with state reset."""
 
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 from railclaw_pipeline.config import PipelineConfig
@@ -11,7 +10,7 @@ from railclaw_pipeline.github.git import GitOperations
 from railclaw_pipeline.milestone.collector import collect_milestone_issues, parse_plan_issues
 from railclaw_pipeline.prompts.loader import render_template
 from railclaw_pipeline.runner.agent import AgentRunner
-from railclaw_pipeline.state.models import PipelineState, PipelineStatus
+from railclaw_pipeline.state.models import PipelineState
 from railclaw_pipeline.state.persistence import save_state
 
 logger = logging.getLogger(__name__)
@@ -67,7 +66,13 @@ async def run_milestone(
     if not prompt:
         prompt = _build_milestone_blueprint_prompt(milestone_label, issue_summaries)
 
-    emitter.emit("agent_start", issue=0, agent="blueprint", cli="opencode", milestone=milestone_label)
+    emitter.emit(
+        "agent_start",
+        issue=0,
+        agent="blueprint",
+        cli="opencode",
+        milestone=milestone_label,
+    )
     result = await blueprint_runner.run(prompt)
     emitter.emit(
         "agent_end",
@@ -80,9 +85,7 @@ async def run_milestone(
     )
 
     if not result.success:
-        raise RuntimeError(
-            f"Milestone Blueprint failed: {result.error or result.stderr[:500]}"
-        )
+        raise RuntimeError(f"Milestone Blueprint failed: {result.error or result.stderr[:500]}")
 
     plan_path = config.factory_path / "PLAN.md"
     issue_numbers = parse_plan_issues(plan_path)
@@ -109,20 +112,24 @@ async def run_milestone(
             milestone_mode=True,
             milestone_label=milestone_label,
             repo_path=str(config.repo_path),
-            timestamps=__import__("railclaw_pipeline.state.models", fromlist=["Timestamps"]).Timestamps(
-                started=datetime.now(timezone.utc),
-                stage_entered=datetime.now(timezone.utc),
-                last_updated=datetime.now(timezone.utc),
+            timestamps=__import__(
+                "railclaw_pipeline.state.models", fromlist=["Timestamps"]
+            ).Timestamps(
+                started=datetime.now(UTC),
+                stage_entered=datetime.now(UTC),
+                last_updated=datetime.now(UTC),
             ),
         )
         save_state(state, config.state_path)
 
         try:
             await pipeline_func(state, config, emitter)
-            results.append({
-                "issue": issue_num,
-                "status": "success",
-            })
+            results.append(
+                {
+                    "issue": issue_num,
+                    "status": "success",
+                }
+            )
         except Exception as exc:
             logger.error(
                 "Milestone issue #%d failed: %s",
@@ -130,11 +137,13 @@ async def run_milestone(
                 exc,
                 exc_info=True,
             )
-            results.append({
-                "issue": issue_num,
-                "status": "failed",
-                "error": str(exc),
-            })
+            results.append(
+                {
+                    "issue": issue_num,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
             emitter.emit(
                 "milestone_issue_failed",
                 milestone=milestone_label,
@@ -163,10 +172,7 @@ async def run_milestone(
 
 
 def _build_milestone_blueprint_prompt(milestone: str, issues: list[dict]) -> str:
-    issues_text = "\n".join(
-        f"  - #{i['number']}: {i['title']}"
-        for i in issues
-    )
+    issues_text = "\n".join(f"  - #{i['number']}: {i['title']}" for i in issues)
     return (
         "You are Blueprint, the planning agent.\n\n"
         f"Create a holistic plan for milestone '{milestone}' covering {len(issues)} issues:\n"

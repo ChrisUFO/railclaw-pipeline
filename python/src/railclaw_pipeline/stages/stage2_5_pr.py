@@ -1,7 +1,7 @@
 """Stage 2.5: Create PR — uses gh CLI to create a pull request."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from railclaw_pipeline.config import PipelineConfig
 from railclaw_pipeline.events.emitter import EventEmitter
@@ -38,7 +38,9 @@ async def run_create_pr(
         save_state(state, config.state_path)
         return state
 
-    title = f"Issue #{state.issue_number}: {state.branch.replace('feat/issue-', '').replace('-', ' ')}"
+    title = (
+        f"Issue #{state.issue_number}: {state.branch.replace('feat/issue-', '').replace('-', ' ')}"
+    )
     body = f"Closes #{state.issue_number}\n\nAutomated pipeline implementation."
 
     result = await pr_client.create(
@@ -55,7 +57,7 @@ async def run_create_pr(
             try:
                 state.pr_number = int(url.rstrip("/").split("/")[-1])
             except (ValueError, IndexError):
-                raise RuntimeError(f"Failed to parse PR number from URL: {url}")
+                raise RuntimeError(f"Failed to parse PR number from URL: {url}") from None
         else:
             raise RuntimeError(f"PR creation returned no number: {result}")
 
@@ -66,6 +68,6 @@ async def run_create_pr(
         branch=state.branch,
     )
 
-    state.timestamps.stage_entered = datetime.now(timezone.utc)
+    state.timestamps.stage_entered = datetime.now(UTC)
     save_state(state, config.state_path)
     return state

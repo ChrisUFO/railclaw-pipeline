@@ -7,6 +7,7 @@ export interface PipelineRunMetadata {
   startedAt: string;
   updatedAt: string;
   statePath: string;
+  pid?: number;
 }
 
 type PipelineRunMap = Record<string, PipelineRunMetadata>;

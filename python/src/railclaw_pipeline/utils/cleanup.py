@@ -2,7 +2,7 @@
 
 import logging
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -24,14 +24,14 @@ def cleanup_old_runs(
     Returns:
         List of deleted (or would-be-deleted) directory paths.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
     deleted: list[str] = []
     if not base_dir.exists():
         return deleted
     for run_dir in sorted(base_dir.iterdir()):
         if not run_dir.is_dir():
             continue
-        ctime = datetime.fromtimestamp(run_dir.stat().st_ctime, tz=timezone.utc)
+        ctime = datetime.fromtimestamp(run_dir.stat().st_ctime, tz=UTC)
         if ctime < cutoff:
             if dry_run:
                 logger.info("dry-run: would delete %s (ctime=%s)", run_dir, ctime)

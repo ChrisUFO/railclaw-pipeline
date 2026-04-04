@@ -1,19 +1,17 @@
 """Review parsing and Gemini review polling."""
 
-import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
-from railclaw_pipeline.github.gh import GhClient, GhError
 from railclaw_pipeline.github.pr import PrClient
 
 
 @dataclass
 class ReviewFinding:
     """A single finding from a code review."""
+
     file: str | None = None
     line: int | None = None
     severity: str = "info"
@@ -37,6 +35,7 @@ class ReviewFinding:
 @dataclass
 class ReviewResult:
     """Aggregated result from review parsing."""
+
     findings: list[ReviewFinding] = field(default_factory=list)
     is_clean: bool = True
     has_formal_review: bool = False
@@ -75,12 +74,14 @@ def parse_details_blocks(text: str) -> list[ReviewFinding]:
             severity = summary_text
             title = ""
         body = summary_pattern.sub("", block_content).strip()
-        findings.append(ReviewFinding(
-            severity=severity,
-            title=title,
-            description=body,
-            raw_text=block_content.strip(),
-        ))
+        findings.append(
+            ReviewFinding(
+                severity=severity,
+                title=title,
+                description=body,
+                raw_text=block_content.strip(),
+            )
+        )
     return findings
 
 
@@ -131,14 +132,16 @@ def extract_findings_from_comments(comments: list[dict[str, Any]]) -> list[Revie
         if author in ("github-actions[bot]", "dependabot[bot]"):
             continue
         severity, category = classify_finding(body)
-        findings.append(ReviewFinding(
-            file=comment.get("path"),
-            line=comment.get("line"),
-            severity=severity,
-            category=category,
-            description=body[:500],
-            raw_text=body,
-        ))
+        findings.append(
+            ReviewFinding(
+                file=comment.get("path"),
+                line=comment.get("line"),
+                severity=severity,
+                category=category,
+                description=body[:500],
+                raw_text=body,
+            )
+        )
     return findings
 
 
@@ -161,12 +164,14 @@ def extract_findings_from_reviews(reviews: list[dict[str, Any]]) -> list[ReviewF
             # COMMENTED without <details> is informational — skip
             if not details_findings and state == "CHANGES_REQUESTED":
                 severity, category = classify_finding(body)
-                findings.append(ReviewFinding(
-                    severity=severity,
-                    category=category,
-                    description=body[:500],
-                    raw_text=body,
-                ))
+                findings.append(
+                    ReviewFinding(
+                        severity=severity,
+                        category=category,
+                        description=body[:500],
+                        raw_text=body,
+                    )
+                )
 
     return findings
 
@@ -194,11 +199,13 @@ async def poll_reviews(
         try:
             cutoff = datetime.fromisoformat(last_processed_at.replace("Z", "+00:00"))
             comments = [
-                c for c in comments
+                c
+                for c in comments
                 if datetime.fromisoformat(c.get("createdAt", "").replace("Z", "+00:00")) > cutoff
             ]
             reviews = [
-                r for r in reviews
+                r
+                for r in reviews
                 if datetime.fromisoformat(r.get("submittedAt", "").replace("Z", "+00:00")) > cutoff
             ]
         except (ValueError, TypeError):
@@ -207,13 +214,15 @@ async def poll_reviews(
     findings = extract_findings_from_comments(comments)
     findings.extend(extract_findings_from_reviews(reviews))
 
-    has_formal = any(r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED") for r in reviews)
+    has_formal = any(
+        r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED") for r in reviews
+    )
 
     return ReviewResult(
         findings=findings,
         is_clean=len(findings) == 0,
         has_formal_review=has_formal,
-        last_processed_at=datetime.now(timezone.utc).isoformat(),
+        last_processed_at=datetime.now(UTC).isoformat(),
         raw_comments=comments,
         raw_reviews=reviews,
     )
