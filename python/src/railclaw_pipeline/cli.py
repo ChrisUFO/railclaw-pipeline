@@ -173,19 +173,17 @@ def _run_pipeline_child(
         return
 
     try:
-        asyncio.run(run_pipeline(state, config, emitter, hotfix=hotfix))
-    except BaseException as exc:
-        if isinstance(exc, (SystemExit, KeyboardInterrupt)):
-            logger.info("Daemon interrupted, saving FAILED state")
-        with contextlib.suppress(FileNotFoundError):
-            state = load_state(state_path)
+        asyncio.run(run_pipeline(state, config, emitter))
+    except Exception as exc:
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
         save_state(state, state_path)
     finally:
         emitter.close()
-        remove_pid(pid_path)
         lock.release()
+
+    with contextlib.suppress(FileNotFoundError):
+        state = load_state(state_path)
 
 
 def _detach_fork(
@@ -433,17 +431,16 @@ def run(
                 asyncio.run(run_pipeline(state, config, emitter, hotfix=True))
             else:
                 asyncio.run(run_pipeline(state, config, emitter))
-
-            state = load_state(state_path)
         except Exception as exc:
-            with contextlib.suppress(FileNotFoundError):
-                state = load_state(state_path)
             state.status = PipelineStatus.FAILED
             state.error = {"message": str(exc)}
             save_state(state, state_path)
         finally:
             emitter.close()
             lock.release()
+
+        with contextlib.suppress(FileNotFoundError):
+            state = load_state(state_path)
 
         output_result(
             {
@@ -581,16 +578,16 @@ def resume(
 
     try:
         asyncio.run(run_pipeline(state, config, emitter))
-        state = load_state(state_path)
     except Exception as exc:
-        with contextlib.suppress(FileNotFoundError):
-            state = load_state(state_path)
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
         save_state(state, state_path)
     finally:
         emitter.close()
         lock.release()
+
+    with contextlib.suppress(FileNotFoundError):
+        state = load_state(state_path)
 
     output_result(
         {
