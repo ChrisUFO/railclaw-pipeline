@@ -269,7 +269,7 @@ class RepairEngine:
                 if branch not in open_pr_heads:
                     issues.append(
                         RepairIssue(
-                            severity=IssueSeverity.WARNING,
+                            severity=IssueSeverity.CRITICAL,
                             category="orphaned_branch",
                             description=f"Branch '{branch}' has no open PR.",
                             fixable=True,
@@ -429,17 +429,27 @@ class RepairEngine:
                 stdout, _ = await proc.communicate()
                 if proc.returncode == 0 and stdout.strip():
                     output = stdout.decode().strip()
-                    # CSV format: "image name","PID","session","session#","mem usage"
-                    if f'"{pid}"' in output:
-                        issues.append(
-                            RepairIssue(
-                                severity=IssueSeverity.CRITICAL,
-                                category="dangling_process",
-                                description=f"Pipeline process PID {pid} is still running on Windows.",
-                                fixable=True,
-                                fix_action="dangling_process",
-                            )
-                        )
+                    # CSV format: "image name","PID","session name","session#","mem usage"
+                    # Parse the second column (PID) properly
+                    try:
+                        import csv
+                        import io
+
+                        reader = csv.reader(io.StringIO(output))
+                        for row in reader:
+                            if len(row) >= 2 and row[1].strip() == str(pid):
+                                issues.append(
+                                    RepairIssue(
+                                        severity=IssueSeverity.CRITICAL,
+                                        category="dangling_process",
+                                        description=f"Pipeline process PID {pid} is still running on Windows ({row[0].strip()}).",
+                                        fixable=True,
+                                        fix_action="dangling_process",
+                                    )
+                                )
+                                break
+                    except (csv.Error, IndexError):
+                        pass
             except (OSError, FileNotFoundError):
                 pass
         else:

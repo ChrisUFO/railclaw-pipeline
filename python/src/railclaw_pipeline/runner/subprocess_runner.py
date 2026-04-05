@@ -178,6 +178,28 @@ async def _kill_process_cascade(
 
     try:
         if sys.platform == "win32":
+            # Graceful shutdown: taskkill without /F first, wait, then escalate.
+            try:
+                await asyncio.create_subprocess_exec(
+                    "taskkill",
+                    "/PID",
+                    str(pid),
+                    "/T",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except (OSError, FileNotFoundError):
+                proc.kill()
+                await proc.wait()
+                return
+
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if proc.returncode is not None:
+                    return
+                await asyncio.sleep(0.2)
+
+            # Escalate to forced kill
             try:
                 await asyncio.create_subprocess_exec(
                     "taskkill",

@@ -1,5 +1,7 @@
 """Main pipeline runner — orchestrates stage execution."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
@@ -96,7 +98,7 @@ def _should_skip_stage(current_stage: str, resume_from: str) -> bool:
 
 
 def _check_circuit_breaker(
-    circuit_breaker: Any,
+    circuit_breaker: CircuitBreaker | None,
     agent: str,
     issue_number: int,
     emitter: Any,
@@ -131,7 +133,7 @@ async def run_stage(
     config: PipelineConfig,
     emitter: EventEmitter,
     *args: Any,
-    circuit_breaker: Any = None,
+    circuit_breaker: CircuitBreaker | None = None,
     agent_name: str | None = None,
 ) -> PipelineState:
     """Execute a pipeline stage with timeout, event emission, and state persistence."""
@@ -264,7 +266,10 @@ async def run_pipeline(
 
     cb_path = config.factory_path / config.state_dir / "circuit_breaker.json"
     circuit_breaker = CircuitBreaker(cb_path)
-    circuit_breaker.reset()
+    # Only reset on fresh pipeline starts, not on resume.
+    # Resumes after timeout failures need to preserve circuit state.
+    if state.stage.value == "stage0_preflight":
+        circuit_breaker.reset()
 
     resume_from = state.stage.value
 
@@ -455,7 +460,7 @@ async def _run_cycle1_fix_loop(
     emitter: EventEmitter,
     wrench_config: Any,
     scope_config: Any,
-    circuit_breaker: Any = None,
+    circuit_breaker: CircuitBreaker | None = None,
 ) -> PipelineState:
     """Run the cycle-1 review/fix loop (up to 5 rounds)."""
     from railclaw_pipeline.stages.stage4_review import run_review
@@ -517,7 +522,7 @@ async def _run_cycle2_gemini(
     config: PipelineConfig,
     emitter: EventEmitter,
     scope_config: Any,
-    circuit_breaker: Any = None,
+    circuit_breaker: CircuitBreaker | None = None,
 ) -> PipelineState:
     """Run the cycle-2 Gemini review loop (up to 20 rounds with stall detection)."""
     from railclaw_pipeline.stages.cycle2_gemini import run_gemini_loop

@@ -22,7 +22,7 @@ def atomic_write(path: Path, content: str) -> bool:
             suffix=".tmp",
             prefix="atomic_",
         )
-        with os.fdopen(fd, "w") as tmp_file:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
             tmp_file.write(content)
             tmp_file.flush()
             os.fsync(tmp_file.fileno())

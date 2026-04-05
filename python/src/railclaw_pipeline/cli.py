@@ -93,6 +93,21 @@ def _build_run_dir(factory_path: str, issue: int | None) -> Path:
     )
 
 
+def _build_preflight_gate(config: "PipelineConfig") -> "PreflightGate":
+    """Build a PreflightGate from a PipelineConfig."""
+    from railclaw_pipeline.validation.preflight import PreflightGate
+
+    return PreflightGate(
+        repo_path=config.repo_path,
+        factory_path=config.factory_path,
+        state_path=config.state_path,
+        lock_path=config.lock_path,
+        lock_max_age=config.lock_max_age,
+        disk_space_min_mb=config.preflight.get("diskSpaceMinMB", 500),
+        agent_commands=config.preflight.get("agentCommands"),
+    )
+
+
 def _run_pipeline_child(
     state_path: Path,
     pid_path: Path,
@@ -126,17 +141,7 @@ def _run_pipeline_child(
     # validation even if the parent was bypassed or started with --skip-preflight.
     # Only runs on fresh starts (stage0_preflight); resumed runs skip this.
     if state.stage.value == "stage0_preflight":
-        from railclaw_pipeline.validation.preflight import PreflightGate
-
-        gate = PreflightGate(
-            repo_path=config.repo_path,
-            factory_path=config.factory_path,
-            state_path=config.state_path,
-            lock_path=config.lock_path,
-            lock_max_age=config.lock_max_age,
-            disk_space_min_mb=config.preflight.get("diskSpaceMinMB", 500),
-            agent_commands=config.preflight.get("agentCommands"),
-        )
+        gate = _build_preflight_gate(config)
         preflight_result = asyncio.run(gate.run())
         if not preflight_result.passed:
             state.status = PipelineStatus.FAILED
@@ -361,7 +366,6 @@ def run(
 
     if not skip_preflight:
         from railclaw_pipeline.config import PipelineConfig
-        from railclaw_pipeline.validation.preflight import PreflightGate
 
         preflight_config = PipelineConfig(
             {
@@ -369,15 +373,7 @@ def run(
                 "factoryPath": effective_factory,
             }
         )
-        gate = PreflightGate(
-            repo_path=preflight_config.repo_path,
-            factory_path=preflight_config.factory_path,
-            state_path=preflight_config.state_path,
-            lock_path=preflight_config.lock_path,
-            lock_max_age=preflight_config.lock_max_age,
-            disk_space_min_mb=preflight_config.preflight.get("diskSpaceMinMB", 500),
-            agent_commands=preflight_config.preflight.get("agentCommands"),
-        )
+        gate = _build_preflight_gate(preflight_config)
         result = asyncio.run(gate.run())
         if not result.passed:
             output_result(
@@ -518,7 +514,11 @@ def status(factory_path: str | None, state_dir: str | None) -> None:
 @click.option("--state-dir", type=str, help="State directory")
 @click.option("--force-stage", type=str, help="Force resume at specific stage")
 @click.option("--detach", is_flag=True, help="Resume as background daemon process")
-@click.option("--skip-preflight", is_flag=True, help="Skip pre-flight validation checks")
+@click.option(
+    "--skip-preflight",
+    is_flag=True,
+    help="Reserved for API symmetry (preflight is always skipped on resume)",
+)
 def resume(
     repo_path: str | None,
     factory_path: str | None,
@@ -527,6 +527,9 @@ def resume(
     detach: bool,
     skip_preflight: bool,
 ) -> None:
+    # Note: skip_preflight is accepted for API symmetry but has no effect.
+    # Resume always skips preflight since it was validated on the initial run.
+    _ = skip_preflight
     effective_repo, effective_factory, state_path, pid_path = _resolve_config_paths(
         repo_path,
         factory_path,
@@ -550,15 +553,57 @@ def resume(
         _detach_and_run(state_path, pid_path, effective_repo, effective_factory, hotfix=False)
         return
 
+    from railclaw_pipeline.config import PipelineConfig
+    from railclaw_pipeline.events.emitter import EventEmitter
+    from railclaw_pipeline.pipeline import run_pipeline
+
+    config = PipelineConfig(
+        {
+            "repoPath": effective_repo,
+            "factoryPath": effective_factory,
+        }
+    )
+
+    lock = StateLock(pid_path.parent / "pipeline.lock", max_age=config.lock_max_age)
+    try:
+        lock.acquire(
+            agent="pipeline",
+            stage=state.stage.value,
+            run_id=f"issue-{state.issue_number}",
+        )
+    except StateLockError as exc:
+        output_result({"ok": False, "action": "resume", "error": str(exc)})
+        return
+
+    run_dir = _build_run_dir(effective_factory, state.issue_number)
+    emitter = EventEmitter(config.events_path, run_dir=run_dir)
+
+    try:
+        asyncio.run(run_pipeline(state, config, emitter))
+        state = load_state(state_path)
+    except Exception as exc:
+        with contextlib.suppress(FileNotFoundError):
+            state = load_state(state_path)
+        state.status = PipelineStatus.FAILED
+        state.error = {"message": str(exc)}
+        save_state(state, state_path)
+    finally:
+        emitter.close()
+        lock.release()
+
     output_result(
         {
-            "ok": True,
+            "ok": state.status == PipelineStatus.COMPLETED,
             "action": "resume",
             "stage": state.stage.value,
             "status": state.status.value,
             "issueNumber": state.issue_number,
-            "message": f"Pipeline resumed at {state.stage.value}",
+            "prNumber": state.pr_number,
+            "branch": state.branch,
+            "message": f"Pipeline {state.status.value}"
+            + (f": {state.error['message']}" if state.error else ""),
             "statePath": str(state_path),
+            "error": state.error.get("message") if state.error else None,
         }
     )
 
@@ -690,9 +735,9 @@ def repair(
         result = asyncio.run(engine.repair(force=force))
     else:
         result = asyncio.run(engine.scan())
-        result.unfixable = [
+        result.unfixable.extend(
             f"[{i.category}] {i.description}" for i in result.issues if not i.fixable
-        ]
+        )
 
     output_result(
         {
