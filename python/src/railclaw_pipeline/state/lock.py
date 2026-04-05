@@ -5,6 +5,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -191,8 +192,6 @@ class StateLock:
 
     def _build_lock_content(self, agent: str, stage: str, run_id: str) -> str:
         """Build JSON lock file content."""
-        from datetime import UTC, datetime
-
         data: dict[str, Any] = {
             "pid": os.getpid(),
             "timestamp": datetime.now(UTC).isoformat(),

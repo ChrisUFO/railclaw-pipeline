@@ -33,7 +33,7 @@ RailClaw Pipeline is an OpenClaw plugin that automates a multi-stage coding fact
 
 ## Process Model
 
-### Blocking Mode (default for direct cli usage)
+### Blocking Mode (default for direct CLI usage)
 
 The Python CLI runs the full pipeline synchronously. The TS bridge waits for process exit and parses JSON stdout.
 

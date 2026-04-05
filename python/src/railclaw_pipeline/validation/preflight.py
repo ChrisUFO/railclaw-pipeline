@@ -163,7 +163,6 @@ class PreflightGate:
         missing = []
         for cmd_str in self.agent_commands:
             cmd_parts = cmd_str.split()
-            binary = cmd_parts[0]
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd_parts,

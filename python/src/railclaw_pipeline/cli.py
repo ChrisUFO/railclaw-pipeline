@@ -1,5 +1,7 @@
 """CLI interface for pipeline orchestrator."""
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import json
@@ -93,7 +95,7 @@ def _build_run_dir(factory_path: str, issue: int | None) -> Path:
     )
 
 
-def _build_preflight_gate(config: "PipelineConfig") -> "PreflightGate":
+def _build_preflight_gate(config: PipelineConfig) -> PreflightGate:
     """Build a PreflightGate from a PipelineConfig."""
     from railclaw_pipeline.validation.preflight import PreflightGate
 
