@@ -1,6 +1,6 @@
 {
   "name": "@chrisufo/railclaw-pipeline",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "description": "OpenClaw plugin for automated coding factory pipeline orchestration",
   "main": "dist/index.js",
