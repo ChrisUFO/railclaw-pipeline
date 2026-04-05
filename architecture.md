@@ -112,7 +112,7 @@ Skipped for `resume` action (already validated on initial run). Configurable via
 
 `railclaw-pipeline repair [--fix] [--force]` detects and repairs broken pipeline state:
 
-- **Stale lock**: dead PID or age > 5 min → remove
+- **Stale lock**: dead PID or age > `lockMaxAge` (default 4 hours) → remove
 - **Orphaned branches**: feat/issue-_ or fix/issue-_ with no open PR → delete
 - **Uncommitted changes**: working tree modifications → stash
 - **Corrupt state**: invalid JSON → archive to `.pipeline-state/corrupt/`

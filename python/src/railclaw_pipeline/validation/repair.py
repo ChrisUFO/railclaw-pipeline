@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import csv
+import io
 import json
 import os
 import shutil
@@ -432,9 +434,6 @@ class RepairEngine:
                     # CSV format: "image name","PID","session name","session#","mem usage"
                     # Parse the second column (PID) properly
                     try:
-                        import csv
-                        import io
-
                         reader = csv.reader(io.StringIO(output))
                         for row in reader:
                             if len(row) >= 2 and row[1].strip() == str(pid):

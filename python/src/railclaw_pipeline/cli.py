@@ -443,8 +443,7 @@ def run(
             save_state(state, state_path)
         finally:
             emitter.close()
-            if lock:
-                lock.release()
+            lock.release()
 
         output_result(
             {
@@ -603,7 +602,7 @@ def resume(
             "prNumber": state.pr_number,
             "branch": state.branch,
             "message": f"Pipeline {state.status.value}"
-            + (f": {state.error['message']}" if state.error else ""),
+            + (f": {state.error.get('message')}" if state.error else ""),
             "statePath": str(state_path),
             "error": state.error.get("message") if state.error else None,
         }
