@@ -25,6 +25,9 @@ class PipelineConfig:
         self.state_path = self.factory_path / self.state_dir / "state.json"
         self.events_path = self.factory_path / self.events_dir / "events.jsonl"
         self.pid_path = self.factory_path / self.state_dir / "pipeline.pid"
+        self.lock_path = self.factory_path / self.state_dir / "pipeline.lock"
+
+        self.lock_max_age = config_dict.get("lockMaxAge", 14400)
 
         self.agents = config_dict.get(
             "agents",
@@ -59,6 +62,14 @@ class PipelineConfig:
             {
                 "wrenchSrAfterRound": 3,
                 "chrisAfterRound": 5,
+            },
+        )
+
+        self.preflight = config_dict.get(
+            "preflight",
+            {
+                "diskSpaceMinMB": 500,
+                "agentCommands": ["opencode --version", "gemini --version"],
             },
         )
 

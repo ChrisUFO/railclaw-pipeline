@@ -1,5 +1,7 @@
 """CLI interface for pipeline orchestrator."""
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import json
@@ -14,6 +16,7 @@ from typing import Any
 
 import click
 
+from railclaw_pipeline.state.lock import StateLock, StateLockError
 from railclaw_pipeline.state.models import (
     CycleState,
     PipelineStage,
@@ -92,6 +95,21 @@ def _build_run_dir(factory_path: str, issue: int | None) -> Path:
     )
 
 
+def _build_preflight_gate(config: PipelineConfig) -> PreflightGate:
+    """Build a PreflightGate from a PipelineConfig."""
+    from railclaw_pipeline.validation.preflight import PreflightGate
+
+    return PreflightGate(
+        repo_path=config.repo_path,
+        factory_path=config.factory_path,
+        state_path=config.state_path,
+        lock_path=config.lock_path,
+        lock_max_age=config.lock_max_age,
+        disk_space_min_mb=config.preflight.get("diskSpaceMinMB", 500),
+        agent_commands=config.preflight.get("agentCommands"),
+    )
+
+
 def _run_pipeline_child(
     state_path: Path,
     pid_path: Path,
@@ -120,22 +138,53 @@ def _run_pipeline_child(
 
     state = load_state(state_path)
 
+    # Pre-flight validation in child process (detached mode) — defense in depth.
+    # The parent process also runs preflight before forking, but this ensures
+    # validation even if the parent was bypassed or started with --skip-preflight.
+    # Only runs on fresh starts (stage0_preflight); resumed runs skip this.
+    if state.stage.value == "stage0_preflight":
+        gate = _build_preflight_gate(config)
+        preflight_result = asyncio.run(gate.run())
+        if not preflight_result.passed:
+            state.status = PipelineStatus.FAILED
+            state.error = {
+                "message": f"Pre-flight checks failed ({preflight_result.failure_count} issue(s)).",
+                "preflight": preflight_result.to_dict(),
+            }
+            save_state(state, state_path)
+            logger.error("Pre-flight validation failed in child process")
+            return
+
     run_dir = _build_run_dir(factory_path, state.issue_number)
     emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
+    lock = StateLock(config.lock_path, max_age=config.lock_max_age)
+    try:
+        lock.acquire(
+            agent="pipeline",
+            stage=state.stage.value,
+            run_id=f"issue-{state.issue_number}",
+        )
+    except StateLockError as exc:
+        logger.error("Failed to acquire lock in child process: %s", exc)
+        state.status = PipelineStatus.FAILED
+        state.error = {"message": f"Lock acquisition failed: {exc}"}
+        save_state(state, state_path)
+        return
+
     try:
         asyncio.run(run_pipeline(state, config, emitter, hotfix=hotfix))
-    except BaseException as exc:
-        if isinstance(exc, (SystemExit, KeyboardInterrupt)):
-            logger.info("Daemon interrupted, saving FAILED state")
-        with contextlib.suppress(FileNotFoundError):
-            state = load_state(state_path)
+    except Exception as exc:
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
         save_state(state, state_path)
     finally:
         emitter.close()
+        lock.release()
         remove_pid(pid_path)
+
+    with contextlib.suppress(FileNotFoundError):
+        state = load_state(state_path)
 
 
 def _detach_fork(
@@ -178,9 +227,7 @@ def _detach_fork(
         state.pid = os.getpid()
         save_state(state, state_path)
     except Exception as exc:
-        import logging
-
-        logging.getLogger(__name__).error("Failed to persist PID to state: %s", exc)
+        logger.error("Failed to persist PID to state: %s", exc)
 
     _run_pipeline_child(state_path, pid_path, repo_path, factory_path, hotfix)
 
@@ -274,6 +321,7 @@ def main() -> None:
 @click.option("--hotfix", is_flag=True, help="Run in hotfix mode")
 @click.option("--force-stage", type=str, help="Force start at specific stage")
 @click.option("--detach", is_flag=True, help="Run as background daemon process")
+@click.option("--skip-preflight", is_flag=True, help="Skip pre-flight validation checks")
 def run(
     repo_path: str | None,
     factory_path: str | None,
@@ -283,6 +331,7 @@ def run(
     hotfix: bool,
     force_stage: str | None,
     detach: bool,
+    skip_preflight: bool,
 ) -> None:
     if not issue and not milestone:
         output_result({"ok": False, "action": "run", "error": "issue or milestone is required"})
@@ -313,22 +362,39 @@ def run(
                     state.error = {"message": "Previous pipeline died unexpectedly"}
                     save_state(state, state_path)
                     remove_pid(pid_path)
-        except Exception:
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
+
+    if not skip_preflight:
+        from railclaw_pipeline.config import PipelineConfig
+
+        preflight_config = PipelineConfig(
+            {
+                "repoPath": effective_repo,
+                "factoryPath": effective_factory,
+            }
+        )
+        gate = _build_preflight_gate(preflight_config)
+        result = asyncio.run(gate.run())
+        if not result.passed:
+            output_result(
+                {
+                    "ok": False,
+                    "action": "run",
+                    "error": f"Pre-flight checks failed ({result.failure_count} issue(s)).",
+                    "preflight": result.to_dict(),
+                }
+            )
+            return
 
     now = datetime.now(UTC)
     state = PipelineState(
         issue_number=issue or 0,
         milestone_mode=milestone is not None,
         milestone_label=milestone,
-        stage=PipelineStage.STAGE0_PREFLIGHT if not force_stage else PipelineStage(force_stage),
+        stage=PipelineStage(force_stage) if force_stage else PipelineStage.STAGE0_PREFLIGHT,
         status=PipelineStatus.RUNNING,
-        timestamps=Timestamps(
-            started=now,
-            stage_entered=now,
-            last_updated=now,
-        ),
-        cycle=CycleState(),
+        timestamps=Timestamps(started=now, stage_entered=now, last_updated=now),
     )
 
     save_state(state, state_path)
@@ -346,6 +412,18 @@ def run(
                 "factoryPath": effective_factory,
             }
         )
+
+        lock = StateLock(pid_path.parent / "pipeline.lock", max_age=config.lock_max_age)
+        try:
+            lock.acquire(
+                agent="pipeline",
+                stage=state.stage.value,
+                run_id=f"issue-{state.issue_number}",
+            )
+        except StateLockError as exc:
+            output_result({"ok": False, "action": "run", "error": str(exc)})
+            return
+
         run_dir = _build_run_dir(effective_factory, issue)
         emitter = EventEmitter(config.events_path, run_dir=run_dir)
 
@@ -354,16 +432,16 @@ def run(
                 asyncio.run(run_pipeline(state, config, emitter, hotfix=True))
             else:
                 asyncio.run(run_pipeline(state, config, emitter))
-
-            state = load_state(state_path)
         except Exception as exc:
-            with contextlib.suppress(FileNotFoundError):
-                state = load_state(state_path)
             state.status = PipelineStatus.FAILED
             state.error = {"message": str(exc)}
             save_state(state, state_path)
         finally:
             emitter.close()
+            lock.release()
+
+        with contextlib.suppress(FileNotFoundError):
+            state = load_state(state_path)
 
         output_result(
             {
@@ -435,13 +513,22 @@ def status(factory_path: str | None, state_dir: str | None) -> None:
 @click.option("--state-dir", type=str, help="State directory")
 @click.option("--force-stage", type=str, help="Force resume at specific stage")
 @click.option("--detach", is_flag=True, help="Resume as background daemon process")
+@click.option(
+    "--skip-preflight",
+    is_flag=True,
+    help="Reserved for API symmetry (preflight is always skipped on resume)",
+)
 def resume(
     repo_path: str | None,
     factory_path: str | None,
     state_dir: str | None,
     force_stage: str | None,
     detach: bool,
+    skip_preflight: bool,
 ) -> None:
+    # Note: skip_preflight is accepted for API symmetry but has no effect.
+    # Resume always skips preflight since it was validated on the initial run.
+    _ = skip_preflight
     effective_repo, effective_factory, state_path, pid_path = _resolve_config_paths(
         repo_path,
         factory_path,
@@ -465,15 +552,57 @@ def resume(
         _detach_and_run(state_path, pid_path, effective_repo, effective_factory, hotfix=False)
         return
 
+    from railclaw_pipeline.config import PipelineConfig
+    from railclaw_pipeline.events.emitter import EventEmitter
+    from railclaw_pipeline.pipeline import run_pipeline
+
+    config = PipelineConfig(
+        {
+            "repoPath": effective_repo,
+            "factoryPath": effective_factory,
+        }
+    )
+
+    lock = StateLock(pid_path.parent / "pipeline.lock", max_age=config.lock_max_age)
+    try:
+        lock.acquire(
+            agent="pipeline",
+            stage=state.stage.value,
+            run_id=f"issue-{state.issue_number}",
+        )
+    except StateLockError as exc:
+        output_result({"ok": False, "action": "resume", "error": str(exc)})
+        return
+
+    run_dir = _build_run_dir(effective_factory, state.issue_number)
+    emitter = EventEmitter(config.events_path, run_dir=run_dir)
+
+    try:
+        asyncio.run(run_pipeline(state, config, emitter))
+    except Exception as exc:
+        state.status = PipelineStatus.FAILED
+        state.error = {"message": str(exc)}
+        save_state(state, state_path)
+    finally:
+        emitter.close()
+        lock.release()
+
+    with contextlib.suppress(FileNotFoundError):
+        state = load_state(state_path)
+
     output_result(
         {
-            "ok": True,
+            "ok": state.status == PipelineStatus.COMPLETED,
             "action": "resume",
             "stage": state.stage.value,
             "status": state.status.value,
             "issueNumber": state.issue_number,
-            "message": f"Pipeline resumed at {state.stage.value}",
+            "prNumber": state.pr_number,
+            "branch": state.branch,
+            "message": f"Pipeline {state.status.value}"
+            + (f": {state.error.get('message')}" if state.error else ""),
             "statePath": str(state_path),
+            "error": state.error.get("message") if state.error else None,
         }
     )
 
@@ -568,6 +697,58 @@ def notifications(factory_path: str | None, since: str | None, limit: int) -> No
             "count": len(results),
             "notifications": [asdict(n) for n in results],
             "message": f"Returned {len(results)} notification(s)",
+        }
+    )
+
+
+@main.command()
+@click.option("--repo-path", type=str, help="Absolute path to the target repo")
+@click.option("--factory-path", type=str, help="Path to factory config directory")
+@click.option("--state-dir", type=str, help="State directory")
+@click.option("--fix", is_flag=True, help="Auto-fix all safe issues")
+@click.option("--force", is_flag=True, help="Force fix dangerous issues")
+def repair(
+    repo_path: str | None,
+    factory_path: str | None,
+    state_dir: str | None,
+    fix: bool,
+    force: bool,
+) -> None:
+    effective_repo, effective_factory, state_path, pid_path = _resolve_config_paths(
+        repo_path,
+        factory_path,
+        state_dir,
+    )
+
+    from railclaw_pipeline.validation.repair import RepairEngine
+
+    engine = RepairEngine(
+        repo_path=Path(effective_repo),
+        factory_path=Path(effective_factory),
+        state_path=state_path,
+        lock_path=pid_path.parent / "pipeline.lock",
+        state_dir=pid_path.parent,
+    )
+
+    if fix:
+        result = asyncio.run(engine.repair(force=force))
+    else:
+        result = asyncio.run(engine.scan())
+        result.unfixable.extend(
+            f"[{i.category}] {i.description}" for i in result.issues if not i.fixable
+        )
+
+    output_result(
+        {
+            "ok": True,
+            "action": "repair",
+            "fix_mode": fix,
+            "result": result.to_dict(),
+            "message": (
+                f"Found {result.issue_count} issue(s)"
+                + (f", fixed {len(result.fixed)}" if fix else "")
+                + (f", {len(result.unfixable)} unfixable" if result.unfixable else "")
+            ),
         }
     )
 

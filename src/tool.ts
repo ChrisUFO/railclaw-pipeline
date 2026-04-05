@@ -19,6 +19,7 @@ export const PipelineRunParameters = Type.Object({
     Type.Literal("resume"),
     Type.Literal("abort"),
     Type.Literal("notifications"),
+    Type.Literal("repair"),
   ]),
   issueNumber: Type.Optional(Type.Number()),
   milestone: Type.Optional(Type.String()),

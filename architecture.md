@@ -84,6 +84,41 @@ TS: spawn(python, ["abort"])  → read PID → SIGTERM → update state
 - Status: if state says "running" but PID is dead → mark "interrupted"
 - Gateway restart: check PID aliveness, re-associate or mark interrupted
 
+**Lock file**: `{stateDir}/pipeline.lock` — JSON with `{pid, timestamp, agent, stage, run_id}`.
+Cross-platform PID-based validation (no fcntl). Stale detection via PID liveness + age threshold
+(default 4 hours). Force override available. Atomic writes via tempfile + os.replace.
+
+**Circuit breaker**: `{stateDir}/circuit_breaker.json` — tracks consecutive agent timeouts.
+After 2 consecutive timeouts for the same agent, the circuit opens and the pipeline escalates
+instead of retrying. Reset on successful agent execution.
+
+### Pre-Flight Validation Gate
+
+Runs **before Stage 0** (before any state is written) as a hard gate. All 7 checks run
+regardless of individual failures — all failures reported at once:
+
+1. `gh auth status` — GitHub CLI authenticated
+2. Python venv + `railclaw-pipeline --help` reachable
+3. All configured agent CLIs reachable (opencode, gemini)
+4. Repo path exists, is git repo, clean working tree
+5. Disk space > 500MB (configurable)
+6. State directory writable
+7. No active pipeline lock (uses StateLock)
+
+Skipped for `resume` action (already validated on initial run). Configurable via
+`preflight` section in pipeline config.
+
+### Crash Recovery
+
+`railclaw-pipeline repair [--fix] [--force]` detects and repairs broken pipeline state:
+
+- **Stale lock**: dead PID or age > `lockMaxAge` (default 4 hours) → remove
+- **Orphaned branches**: feat/issue-_ or fix/issue-_ with no open PR → delete
+- **Uncommitted changes**: working tree modifications → stash
+- **Corrupt state**: invalid JSON → archive to `.pipeline-state/corrupt/`
+- **Missing PR**: state says 2.5+ complete but PR gone → flag for manual review
+- **Dangling processes**: pipeline subprocess still running → kill
+
 ## Data Flow
 
 ### State Persistence
@@ -162,22 +197,22 @@ PipelineRunMetadata
 
 | Stage           | Agent            | Description                          | Timeout |
 | --------------- | ---------------- | ------------------------------------ | ------- |
-| 0 — Preflight   | —                | Environment checks                   | 120s    |
-| 1 — Blueprint   | Blueprint        | Planning                             | 600s    |
-| 2 — Wrench      | Wrench           | Implementation                       | 7200s   |
-| 2.5 — PR        | —                | PR creation                          | 60s     |
-| 3 — Audit       | Scope            | Completeness audit                   | 300s    |
-| 3.5 — Audit Fix | Wrench           | Fix audit findings                   | 600s    |
-| 4 — Review      | Scope            | Code review                          | 300s    |
-| 5 — Fix Loop    | Wrench/Wrench Sr | Fix review findings (max 5 rounds)   | 600s    |
-| Cycle 2         | Scope/Gemini     | External review loop (max 20 rounds) | 1200s   |
-| 7 — Docs        | Quill            | Documentation (opt-in)               | 600s    |
-| 8 — Approval    | —                | Human approval gate                  | 86400s  |
-| 8c — Merge      | —                | Squash merge + branch delete         | 120s    |
-| 9 — Deploy      | —                | PM2 restart + health check           | 300s    |
-| 10 — QA         | Beaker           | QA sweep                             | 600s    |
-| 11 — Hotfix     | Scope/Wrench     | Post-hoc hotfix review               | 1800s   |
-| 12 — Lessons    | —                | Lessons learned generation           | 120s    |
+| 0 — Preflight   | —                | Environment checks                   | 2m      |
+| 1 — Blueprint   | Blueprint        | Planning                             | 10m     |
+| 2 — Wrench      | Wrench           | Implementation                       | 2h      |
+| 2.5 — PR        | —                | PR creation                          | 1m      |
+| 3 — Audit       | Scope            | Completeness audit                   | 5m      |
+| 3.5 — Audit Fix | Wrench           | Fix audit findings                   | 10m     |
+| 4 — Review      | Scope            | Code review                          | 5m      |
+| 5 — Fix Loop    | Wrench/Wrench Sr | Fix review findings (max 5 rounds)   | 10m     |
+| Cycle 2         | Scope/Gemini     | External review loop (max 20 rounds) | 20m     |
+| 7 — Docs        | Quill            | Documentation (opt-in)               | 10m     |
+| 8 — Approval    | —                | Human approval gate                  | 24h     |
+| 8c — Merge      | —                | Squash merge + branch delete         | 2m      |
+| 9 — Deploy      | —                | PM2 restart + health check           | 5m      |
+| 10 — QA         | Beaker           | QA sweep                             | 10m     |
+| 11 — Hotfix     | Scope/Wrench     | Post-hoc hotfix review               | 30m     |
+| 12 — Lessons    | —                | Lessons learned generation           | 2m      |
 
 ### Stage Runner Pattern
 
@@ -230,6 +265,7 @@ while not gemini_clean and cycle2_round < 20:
 | `resume`        | Resume interrupted pipeline                           |
 | `abort`         | Kill daemon process + mark failed                     |
 | `notifications` | Query pending stage handoff notifications             |
+| `repair`        | Detect and fix broken pipeline state                  |
 
 ### Config Resolution Chain
 
@@ -248,7 +284,7 @@ Runtime config (buildRuntimeConfig)
 ### Dependencies
 
 - **click** — CLI framework
-- **pydantic** — State model validation
+- **pydantic** — State model validations
 - **jinja2** — Sandboxed prompt templates
 - **rich** — Console progress output
 - **tenacity** — Retry logic
@@ -259,18 +295,18 @@ All pure-Python, no native extensions (ARM64 compatible).
 
 ```
 railclaw_pipeline/
-├── cli.py              Click CLI: run, status, resume, abort, notifications, cleanup
+├── cli.py              Click CLI: run, status, resume, abort, notifications, cleanup, repair
 ├── config.py           PipelineConfig from env/CLI/plugin config
 ├── pipeline.py         Stage runner orchestrator + run_stage()
 ├── state/
 │   ├── models.py       Pydantic: PipelineStage, PipelineStatus, PipelineState
 │   ├── persistence.py  Atomic JSON load/save (tempfile+fsync+os.replace)
-│   ├── lock.py         File-based advisory lock (fcntl)
+│   ├── lock.py         Cross-platform advisory lock (PID-based, JSON format)
 │   └── pid.py          PID file management (read/write/is_alive/kill)
 ├── runner/
 │   ├── agent.py        AgentConfig, AgentRunner, AgentResult
 │   ├── agent_config.py Centralized agent config builder
-│   └── subprocess_runner.py  asyncio subprocess wrappers
+│   └── subprocess_runner.py  asyncio subprocess wrappers + SIGTERM→SIGKILL cascade
 ├── stages/             One file per pipeline stage
 ├── events/
 │   ├── emitter.py      JSON lines event writer + notification writer
@@ -279,7 +315,7 @@ railclaw_pipeline/
 ├── github/
 │   ├── git.py          Git operations (shell=False)
 │   ├── gh.py           GitHub API via gh CLI
-│   ├── pr.py           PR create, view, merge, comment
+│   ├── pr.py           PR create (with --body-file), view, merge, comment
 │   ├── review.py       Gemini review polling
 │   ├── board.py        Board JSON update helpers
 │   └── checkpoint.py   CHECKPOINT.md helpers
@@ -289,6 +325,10 @@ railclaw_pipeline/
 ├── prompts/
 │   ├── loader.py       Sandboxed Jinja2 template loader
 │   └── templates/      Bundled .j2 prompt templates
+├── validation/
+│   ├── preflight.py    7-check pre-flight validation gate
+│   ├── circuit_breaker.py  Agent timeout circuit breaker
+│   └── repair.py       Crash recovery and state repair engine
 └── utils/
     └── cleanup.py      Old run log cleanup
 ```
@@ -301,6 +341,8 @@ railclaw_pipeline/
 - **No secrets in state files or event logs** — credentials stay in environment variables
 - **Atomic file writes** — tempfile + fsync + os.replace prevents corruption on crash
 - **Template path traversal prevention** — `..` and `/` prefixes rejected in template names
+- **Cross-platform lock** — PID-based validation replaces POSIX-only fcntl
+- **Timeout cascade prevention** — SIGTERM→SIGKILL cascade prevents stuck processes
 
 ## Testing
 
@@ -330,19 +372,24 @@ python/tests/
 ├── test_state_models.py        Pydantic model validation
 ├── test_agent_runner.py        Agent execution
 ├── test_subprocess_runner.py   Async subprocess wrappers
+├── test_subprocess_kill.py     SIGTERM→SIGKILL cascade on timeout
 ├── test_git.py                 Git operations
 ├── test_gh.py                  GitHub CLI wrapper
 ├── test_review_parsing.py      Gemini review parsing
-├── test_stage_preflight.py     Preflight checks
+├── test_stage_preflight.py     Preflight checks (Stage 0)
+├── test_preflight_gate.py      Pre-flight validation gate (7 checks)
 ├── test_stage5_fix_loop.py     Fix loop + escalation
-├── test_stage_pr.py            PR creation
+├── test_stage_pr.py            PR creation + body format
 ├── test_stage_merge.py         Merge execution
 ├── test_gemini_polling.py      Gemini review polling
 ├── test_approval_gate.py       Approval workflow
 ├── test_milestone.py           Multi-issue mode
 ├── test_resume.py              Kill-and-resume scenarios
 ├── test_injection_resistance.py SSTI + command injection
-└── test_cleanup.py             Run log cleanup
+├── test_cleanup.py             Run log cleanup
+├── test_lock.py                Cross-platform StateLock lifecycle
+├── test_circuit_breaker.py     Agent timeout circuit breaker
+└── test_repair.py              Crash recovery and state repair
 ```
 
 ### Running Tests

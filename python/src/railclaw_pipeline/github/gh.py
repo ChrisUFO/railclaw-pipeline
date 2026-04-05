@@ -1,5 +1,6 @@
 """GitHub CLI (gh) wrapper — shell=False with list args."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -49,8 +50,6 @@ class GhClient:
             "--json",
             "title,body,labels,assignees,state",
         )
-        import json
-
         return json.loads(output)
 
     async def issue_list(
@@ -76,8 +75,6 @@ class GhClient:
         if label:
             args.extend(["--label", label])
         output = await self._gh(*args, timeout=self.timeout * 2)
-        import json
-
         return json.loads(output)
 
     async def issue_create(
@@ -90,8 +87,6 @@ class GhClient:
         if assignee:
             args.extend(["--assignee", assignee])
         output = await self._gh(*args, timeout=30)
-        import json
-
         return json.loads(output) if output.startswith("{") else {"url": output.strip()}
 
     async def issue_comment(self, number: int, body: str) -> str:

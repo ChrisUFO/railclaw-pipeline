@@ -20,6 +20,8 @@ async def run_create_pr(
     """Stage 2.5: Create PR via gh CLI.
 
     Idempotent: if PR already exists for this branch, skip creation.
+    Uses --body-file to ensure GitHub properly parses the PR body
+    for issue auto-linking (Closes #N must be in the first post body).
     """
     if not state.branch:
         raise RuntimeError("No branch set — cannot create PR")
@@ -43,7 +45,7 @@ async def run_create_pr(
     )
     body = f"Closes #{state.issue_number}\n\nAutomated pipeline implementation."
 
-    result = await pr_client.create(
+    result = await pr_client.create_with_body_file(
         title=title,
         body=body,
         base="main",

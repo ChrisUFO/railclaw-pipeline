@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -72,6 +74,67 @@ class PrClient:
             return result
         except GhError as exc:
             raise PrError(f"Failed to create PR: {exc}") from exc
+
+    async def create_with_body_file(
+        self,
+        title: str,
+        body: str,
+        base: str = "main",
+        head: str | None = None,
+        draft: bool = False,
+        labels: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a pull request using --body-file for reliable multi-line body handling.
+
+        Using --body-file ensures GitHub properly parses the PR body for
+        issue auto-linking (Closes #N must be in the first post body).
+        """
+        import tempfile
+
+        args: list[str] = [
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--base",
+            base,
+        ]
+        if head:
+            args.extend(["--head", head])
+        if draft:
+            args.append("--draft")
+        if labels:
+            args.extend(["--label", ",".join(labels)])
+
+        tmp: tempfile._TemporaryFileWrapper[str] | None = None
+        try:
+            tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+                mode="w",
+                suffix=".md",
+                prefix="pr-body-",
+                delete=False,
+                encoding="utf-8",
+            )
+            tmp.write(body)
+            tmp.close()
+            args.extend(["--body-file", tmp.name])
+
+            output = await self.gh._gh(*args, timeout=60)
+            result: dict[str, Any] = {"url": output.strip()}
+            if "/pull/" in output:
+                match = re.search(r"/pull/(\d+)", output)
+                if not match:
+                    raise PrError(f"Failed to extract PR number from URL: {output.strip()}")
+                result["pr_number"] = int(match.group(1))
+            return result
+        except GhError as exc:
+            raise PrError(f"Failed to create PR: {exc}") from exc
+        finally:
+            if tmp is not None:
+                with contextlib.suppress(OSError):
+                    tmp.close()
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp.name)
 
     async def view(
         self,
