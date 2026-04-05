@@ -164,7 +164,7 @@ class RepairEngine:
         return result
 
     async def _detect_stale_lock(self) -> list[RepairIssue]:
-        """1. Stale lock detection — check if lock PID is alive; if dead and age > 5 min, flag."""
+        """1. Stale lock detection — check if lock PID is alive; if dead or age > lock_max_age, flag."""
         issues: list[RepairIssue] = []
         if not self.lock_path.exists():
             return issues

@@ -173,7 +173,7 @@ def _run_pipeline_child(
         return
 
     try:
-        asyncio.run(run_pipeline(state, config, emitter))
+        asyncio.run(run_pipeline(state, config, emitter, hotfix=hotfix))
     except Exception as exc:
         state.status = PipelineStatus.FAILED
         state.error = {"message": str(exc)}
@@ -181,6 +181,7 @@ def _run_pipeline_child(
     finally:
         emitter.close()
         lock.release()
+        remove_pid(pid_path)
 
     with contextlib.suppress(FileNotFoundError):
         state = load_state(state_path)

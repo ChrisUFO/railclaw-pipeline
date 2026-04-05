@@ -132,6 +132,8 @@ class PrClient:
         finally:
             if tmp is not None:
                 with contextlib.suppress(OSError):
+                    tmp.close()
+                with contextlib.suppress(OSError):
                     os.unlink(tmp.name)
 
     async def view(
